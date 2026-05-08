@@ -626,7 +626,7 @@ async function fetchLocationCustomFields(
 
   return fieldsArray
     .filter((field): field is Record<string, unknown> => !!field && typeof field === "object")
-    .map((field) => ({
+    .map((field: Record<string, unknown>) => ({
       id: typeof field.id === "string" ? field.id : "",
       fieldKey: typeof field.fieldKey === "string" ? field.fieldKey : typeof field.name === "string" ? field.name : "",
       displayName: typeof field.displayName === "string" ? field.displayName : typeof field.name === "string" ? field.name : "",
