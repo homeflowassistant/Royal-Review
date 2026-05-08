@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import axios from 'axios';
+import { getInstallation } from '../ghl-service';
 
 const router = express.Router();
 
@@ -23,6 +24,21 @@ async function getValidAgencyToken(): Promise<string> {
     throw new Error('GHL_AGENCY_PRIVATE_TOKEN not configured');
   }
   return agencyPrivateToken;
+}
+
+async function resolveCompanyId(locationId: string): Promise<string> {
+  const envCompanyId = process.env.GHL_COMPANY_ID?.trim();
+  if (envCompanyId) {
+    return envCompanyId;
+  }
+
+  const installation = await getInstallation(locationId);
+  const storedCompanyId = installation?.companyId?.trim();
+  if (storedCompanyId) {
+    return storedCompanyId;
+  }
+
+  throw new Error('Unable to resolve company ID for this location. Reinstall the app or set GHL_COMPANY_ID.');
 }
 
 // Helper: Make GHL API call
@@ -65,10 +81,7 @@ router.get('/auth/location-token', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'locationId query parameter is required' });
     }
 
-    const companyId = process.env.GHL_COMPANY_ID;
-    if (!companyId) {
-      return res.status(500).json({ error: 'GHL_COMPANY_ID not configured' });
-    }
+    const companyId = await resolveCompanyId(locationId);
 
     const agencyToken = await getValidAgencyToken();
 
@@ -158,10 +171,7 @@ router.put('/saas/update-subscription', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'locationId is required' });
     }
 
-    const companyId = process.env.GHL_COMPANY_ID;
-    if (!companyId) {
-      return res.status(500).json({ error: 'GHL_COMPANY_ID not configured' });
-    }
+    const companyId = await resolveCompanyId(locationId);
 
     const agencyPrivateToken = await getValidAgencyToken();
 
