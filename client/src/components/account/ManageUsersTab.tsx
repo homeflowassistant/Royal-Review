@@ -24,6 +24,7 @@ interface User {
   phone: string;
   extension: string;
   avatar?: string;
+  profilePhoto?: string;
   locationIds: string[];
   roles: {
     type: string;
@@ -102,7 +103,11 @@ export function ManageUsersTab({ locationId, onAddUserClick }: ManageUsersTabPro
       }
 
       const data = await response.json();
-      setEditingUser(data);
+      setEditingUser({
+        ...data,
+        avatar: data.profilePhoto || data.avatar,
+        profilePhoto: data.profilePhoto || data.avatar,
+      });
     } catch (err) {
       toast.error('Failed to load user details');
       console.error('Error fetching user details:', err);
@@ -126,11 +131,13 @@ export function ManageUsersTab({ locationId, onAddUserClick }: ManageUsersTabPro
           locationId,
           firstName: updatedUser.firstName,
           lastName: updatedUser.lastName,
-          email: updatedUser.email,
           phone: updatedUser.phone,
           extension: updatedUser.extension,
-          roles: updatedUser.roles,
+          type: updatedUser.roles?.type,
+          role: updatedUser.roles?.role,
+          locationIds: updatedUser.roles?.locationIds || [locationId],
           permissions: updatedUser.permissions,
+          profilePhoto: updatedUser.profilePhoto || updatedUser.avatar,
         }),
       });
 

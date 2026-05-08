@@ -114,6 +114,7 @@ export function AddUserTab({ locationId, onSuccess }: AddUserTabProps) {
           extension: formData.extension.trim() || undefined,
           type: formData.type,
           role: formData.role,
+          locationIds: [locationId],
           permissions: formData.permissions,
         }),
       });

@@ -213,6 +213,7 @@ router.post('/account/users', async (req: Request, res: Response) => {
   try {
     const {
       locationId,
+      companyId: rawCompanyId,
       firstName,
       lastName,
       email,
@@ -221,14 +222,20 @@ router.post('/account/users', async (req: Request, res: Response) => {
       extension,
       type,
       role,
+      locationIds,
       permissions,
+      profilePhoto,
+      platformLanguage,
+      scopes,
+      scopesAssignedToOnly,
+      twilioPhone,
     } = req.body;
 
     if (!locationId || typeof locationId !== 'string') {
       return res.status(400).json({ error: 'locationId is required' });
     }
 
-    const companyId = await resolveCompanyId(locationId);
+    const companyId = (typeof rawCompanyId === 'string' && rawCompanyId.trim()) || await resolveCompanyId(locationId);
     const accessToken = await getLocationAccessToken(locationId);
 
     const result = await ghlRequest({
@@ -239,16 +246,19 @@ router.post('/account/users', async (req: Request, res: Response) => {
         companyId,
         firstName,
         lastName,
-        name: `${firstName} ${lastName}`.trim(),
         email,
         password,
         phone: phone || undefined,
         extension: extension || undefined,
-        avatar: '',
         type,
         role,
-        locationIds: [locationId],
+        locationIds: Array.isArray(locationIds) && locationIds.length > 0 ? locationIds : [locationId],
         permissions,
+        profilePhoto: profilePhoto || undefined,
+        platformLanguage: platformLanguage || undefined,
+        scopes: Array.isArray(scopes) ? scopes : undefined,
+        scopesAssignedToOnly: Array.isArray(scopesAssignedToOnly) ? scopesAssignedToOnly : undefined,
+        twilioPhone: twilioPhone || undefined,
       },
     });
 
@@ -268,7 +278,23 @@ router.post('/account/users', async (req: Request, res: Response) => {
 router.put('/account/users/:userId', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const { locationId, firstName, lastName, email, phone, extension, roles, permissions } = req.body;
+    const {
+      locationId,
+      firstName,
+      lastName,
+      phone,
+      extension,
+      type,
+      role,
+      locationIds,
+      permissions,
+      profilePhoto,
+      platformLanguage,
+      scopes,
+      scopesAssignedToOnly,
+      twilioPhone,
+      password,
+    } = req.body;
 
     if (!locationId || typeof locationId !== 'string') {
       return res.status(400).json({ error: 'locationId is required' });
@@ -283,11 +309,18 @@ router.put('/account/users/:userId', async (req: Request, res: Response) => {
       data: {
         firstName,
         lastName,
-        email,
+        password,
         phone,
         extension,
-        roles,
+        type,
+        role,
+        locationIds: Array.isArray(locationIds) && locationIds.length > 0 ? locationIds : [locationId],
         permissions,
+        profilePhoto: profilePhoto || undefined,
+        platformLanguage: platformLanguage || undefined,
+        scopes: Array.isArray(scopes) ? scopes : undefined,
+        scopesAssignedToOnly: Array.isArray(scopesAssignedToOnly) ? scopesAssignedToOnly : undefined,
+        twilioPhone: twilioPhone || undefined,
       },
     });
 

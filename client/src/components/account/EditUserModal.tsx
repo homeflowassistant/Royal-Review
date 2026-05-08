@@ -10,7 +10,7 @@ interface User {
   email: string;
   phone: string;
   extension: string;
-  avatar?: string;
+  profilePhoto?: string;
   roles: {
     type: string;
     role: string;
@@ -124,8 +124,8 @@ export function EditUserModal({ user, onClose, onSave, saving }: EditUserModalPr
                   <input
                     type="email"
                     value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    readOnly
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500 focus:outline-none"
                   />
                 </div>
 
@@ -153,8 +153,8 @@ export function EditUserModal({ user, onClose, onSave, saving }: EditUserModalPr
                   <label className="block text-sm font-medium text-gray-900 mb-2">Profile Photo URL</label>
                   <input
                     type="url"
-                    value={formData.avatar || ''}
-                    onChange={(e) => handleChange('avatar', e.target.value)}
+                    value={formData.profilePhoto || ''}
+                    onChange={(e) => handleChange('profilePhoto', e.target.value)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
