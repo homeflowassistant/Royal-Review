@@ -281,6 +281,7 @@ function PaymentDrawer({
 export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
   const [currentPlan, setCurrentPlan] = useState<SaaSPlanData | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(true);
+  const [planNotConnected, setPlanNotConnected] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [storedProfile, setStoredProfile] = useState<PaymentMethodProfile | null>(null);
 
@@ -290,13 +291,21 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
       const response = await fetch(getBackendUrl(`/api/saas/plan?locationId=${encodeURIComponent(locationId)}`));
 
       if (!response.ok) {
+        if (response.status === 404) {
+          setCurrentPlan(null);
+          setPlanNotConnected(true);
+          return;
+        }
+
         throw new Error('Failed to fetch current plan');
       }
 
       const data = await response.json();
       setCurrentPlan(data);
+      setPlanNotConnected(false);
     } catch (err) {
       console.error('Error fetching current plan:', err);
+      setPlanNotConnected(false);
       toast.error('Failed to load current plan');
     } finally {
       setLoadingPlan(false);
@@ -329,33 +338,29 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
     );
   }
 
-  if (!currentPlan) {
-    return <ErrorState title="Error" message="Failed to load plan information." onRetry={fetchCurrentPlan} />;
-  }
-
   const paymentMethod = connectedPaymentMethod as NonNullable<typeof connectedPaymentMethod> | undefined;
   const brand = paymentMethod ? ('brand' in paymentMethod ? paymentMethod.brand : paymentMethod.cardBrand) : '';
   const last4 = paymentMethod ? paymentMethod.last4 : '';
   const expMonth = paymentMethod ? paymentMethod.expMonth : 0;
   const expYear = paymentMethod ? paymentMethod.expYear : 0;
   const holderName = paymentMethod ? ('name' in paymentMethod ? paymentMethod.name : paymentMethod.cardholderName) : '';
-  const billingName = currentPlan.billingInformation?.name || holderName || 'N/A';
-  const billingEmail = currentPlan.billingInformation?.email || storedProfile?.billingEmail || 'N/A';
+  const billingName = currentPlan?.billingInformation?.name || holderName || 'N/A';
+  const billingEmail = currentPlan?.billingInformation?.email || storedProfile?.billingEmail || 'N/A';
   const billingAddress = [
-    currentPlan.billingInformation?.addressLine1 || storedProfile?.billingAddressLine1,
-    currentPlan.billingInformation?.addressLine2 || storedProfile?.billingAddressLine2,
-    [currentPlan.billingInformation?.city || storedProfile?.billingCity, currentPlan.billingInformation?.state || storedProfile?.billingState]
+    currentPlan?.billingInformation?.addressLine1 || storedProfile?.billingAddressLine1,
+    currentPlan?.billingInformation?.addressLine2 || storedProfile?.billingAddressLine2,
+    [currentPlan?.billingInformation?.city || storedProfile?.billingCity, currentPlan?.billingInformation?.state || storedProfile?.billingState]
       .filter(Boolean)
       .join(', '),
-    [currentPlan.billingInformation?.postalCode || storedProfile?.billingPostalCode, currentPlan.billingInformation?.country || storedProfile?.billingCountry]
+    [currentPlan?.billingInformation?.postalCode || storedProfile?.billingPostalCode, currentPlan?.billingInformation?.country || storedProfile?.billingCountry]
       .filter(Boolean)
       .join(' '),
   ]
     .filter(Boolean)
     .join(' • ');
-  const taxLabel = currentPlan.taxInformation?.taxLabel || storedProfile?.taxLabel || 'Tax ID';
-  const taxId = currentPlan.taxInformation?.taxId || storedProfile?.taxId || 'Not available';
-  const taxStatus = currentPlan.taxInformation?.taxStatus || storedProfile?.taxStatus || 'Not provided';
+  const taxLabel = currentPlan?.taxInformation?.taxLabel || storedProfile?.taxLabel || 'Tax ID';
+  const taxId = currentPlan?.taxInformation?.taxId || storedProfile?.taxId || 'Not available';
+  const taxStatus = currentPlan?.taxInformation?.taxStatus || storedProfile?.taxStatus || 'Not provided';
 
   return (
     <div className="space-y-6">
@@ -395,7 +400,11 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center">
-                <p className="text-sm text-gray-600">No payment card is connected yet.</p>
+                <p className="text-sm text-gray-600">
+                  {planNotConnected
+                    ? 'No plan or payment method is connected for this location yet.'
+                    : 'No payment card is connected yet.'}
+                </p>
                 <div className="mt-4">
                   <Button onClick={() => setDrawerOpen(true)} className="bg-blue-600 hover:bg-blue-700">
                     Add Card
