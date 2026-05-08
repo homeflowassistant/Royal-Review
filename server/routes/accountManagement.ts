@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import axios from 'axios';
-import { getInstallation } from '../ghl-service';
+import { getInstallation, getValidAccessToken } from '../ghl-service';
 
 const router = express.Router();
 
