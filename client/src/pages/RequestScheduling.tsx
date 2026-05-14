@@ -231,30 +231,11 @@ export default function RequestScheduling() {
           <h2 className="rs-title">Pause Review Requests</h2>
           <p className="rs-subtitle">Temporarily stop all review requests from being sent to your contacts.</p>
 
-          {saveMode === "custom-values" ? (
-            <div className="rs-info-box">
-              <p className="text-sm text-muted-foreground">Pause/Resume functionality is only available when using contact-based settings.</p>
-            </div>
-          ) : (
-            <>
-              <div className={`rs-status-box ${isPaused ? "rs-paused" : "rs-active"}`}>
-                <span className="rs-status-label">{isPaused ? "Paused" : "Active"}</span>
-              </div>
-
-              <button className={`rs-pause-btn ${isPaused ? "rs-btn-resume" : "rs-btn-pause"}`} onClick={handleTogglePause}>
-                <span className="inline-flex items-center gap-2 justify-center">
-                  {isPaused ? <RefreshCw className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
-                  {isPaused ? "Resume Requests" : "Pause Requests"}
-                </span>
-              </button>
-
-              {isPaused ? (
-                <div className="rs-pause-warning">
-                  All review requests are currently paused. Contacts have been removed from "01. Review Reactivation First Campaign For Client List" and "02. Review Request New Customers After Review Reactivation". Click Resume Requests to re-enable sending.
-                </div>
-              ) : null}
-            </>
-          )}
+          <div className="rs-info-box">
+            <p className="text-sm text-muted-foreground">
+              Pause/Resume functionality is available only when editing a specific contact. This page edits location-level custom values and does not target a single contact. To pause requests for an individual contact, open the contact record and use the pause controls there.
+            </p>
+          </div>
         </section>
       </div>
     </div>
