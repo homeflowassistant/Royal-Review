@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import ContactsPage from "./pages/ContactsPage";
+import ContactsEntry from "./pages/ContactsEntry";
 import MessagingPage from "./pages/MessagingPage.tsx";
 import RequestScheduling from "./pages/RequestScheduling";
 import AccountManagement from "./pages/AccountManagement";
