@@ -774,8 +774,8 @@ export async function upsertGhlCustomValue(
   const method = existingId ? "PUT" : "POST";
 
   // Upsert the custom value
-  // Include `key` alongside `name` in the payload to match GHL API that may expect a key field for lookups
-  const payload: Record<string, unknown> = { name, value, key: name };
+  // GHL API expects just name and value for custom values
+  const payload: Record<string, unknown> = { name, value };
 
   const upsertResponse = await fetch(url, {
     method,
@@ -790,8 +790,14 @@ export async function upsertGhlCustomValue(
 
   if (!upsertResponse.ok) {
     const errorBody = await upsertResponse.text();
-    console.error(`[GHL] Failed to upsert custom value "${name}": ${upsertResponse.status} ${errorBody}`);
-    throw new Error(`Failed to save custom value "${name}": ${upsertResponse.status}`);
+    console.error(`[GHL] Failed to upsert custom value "${name}":`, {
+      status: upsertResponse.status,
+      method,
+      url,
+      payload,
+      errorBody,
+    });
+    throw new Error(`Failed to save custom value "${name}": ${upsertResponse.status} ${errorBody}`);
   }
 
   const upsertData = (await upsertResponse.json()) as Record<string, unknown>;
