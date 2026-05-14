@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { getLocationAccessToken } from "../helpers/tokenHelper";
-import { getCustomFieldIdByName } from "../ghl-service";
+import { getCustomFieldIdByName, upsertGhlCustomValue } from "../ghl-service";
 
 const TIMING_MAP = {
   0: "within_24h",
@@ -177,5 +177,87 @@ export const requestSchedulingRouter = router({
       }
 
       return { success: true };
+    }),
+
+  /**
+   * Save custom values to GHL location.
+   * Maps UI slider values to GHL custom value names and values.
+   * initialTiming: 0-3 → "Within 24 Hours", "24 Hours", "48 Hours", "1 Week"
+   * followUpCount: 0-3 → "0", "1", "2", "3"
+   */
+  saveCustomValuesSettings: publicProcedure
+    .input(
+      z.object({
+        locationId: z.string().min(1, "Location ID is required"),
+        initialRequestScheduling: z.enum(["Within 24 Hours", "24 Hours", "48 Hours", "1 Week"], {
+          errorMap: () => ({ message: 'initialRequestScheduling must be one of: "Within 24 Hours", "24 Hours", "48 Hours", "1 Week"' }),
+        }),
+        serviceType: z.enum(["0", "1", "2", "3"], {
+          errorMap: () => ({ message: 'serviceType must be one of: "0", "1", "2", "3"' }),
+        }),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        // Validate inputs are properly formatted
+        const locationId = input.locationId.trim();
+        if (!locationId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Location ID cannot be empty",
+          });
+        }
+
+        // Upsert both custom values
+        const [initialResults, serviceResults] = await Promise.all([
+          upsertGhlCustomValue(locationId, "initial_request_scheduling", input.initialRequestScheduling),
+          upsertGhlCustomValue(locationId, "service_type", input.serviceType),
+        ]);
+
+        return {
+          success: true,
+          saved: {
+            initial_request_scheduling: initialResults.value,
+            service_type: serviceResults.value,
+          },
+          results: {
+            initial_request_scheduling: {
+              action: "created_or_updated",
+              id: initialResults.id,
+            },
+            service_type: {
+              action: "created_or_updated",
+              id: serviceResults.id,
+            },
+          },
+        };
+      } catch (error) {
+        // Handle GHL API errors
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+        // Provide actionable error messages
+        if (errorMessage.includes("401") || errorMessage.includes("Unauthorized") || errorMessage.includes("token")) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "GHL authentication failed. Your access token may be missing, expired, or lack the required custom values scopes.",
+          });
+        }
+
+        if (errorMessage.includes("400") || errorMessage.includes("Bad Request")) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Failed to save custom values: ${errorMessage}`,
+          });
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to save custom values. Please try again.",
+        });
+      }
     }),
 });

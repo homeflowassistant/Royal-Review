@@ -6,7 +6,17 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import "./RequestScheduling.css";
 
-const INITIAL_LABELS = ["Within 24 Hours", "24 Hours", "48 Hours", "1 Week"] as const;
+// Mapping from UI slider value to display label and custom value
+const TIMING_LABELS = ["Within 24 Hours", "24 Hours", "48 Hours", "1 Week"] as const;
+const TIMING_CUSTOM_VALUES = ["Within 24 Hours", "24 Hours", "48 Hours", "1 Week"] as const;
+
+// Mapping from followUpCount to custom value string
+const FOLLOWUP_CUSTOM_VALUES: Record<number, "0" | "1" | "2" | "3"> = {
+  0: "0",
+  1: "1",
+  2: "2",
+  3: "3",
+};
 
 function useLocationAndContactId() {
   return useMemo(() => {
@@ -14,6 +24,8 @@ function useLocationAndContactId() {
     return {
       locationId: params.get("locationId") || "",
       contactId: params.get("contactId") || "",
+      initialRequestScheduling: params.get("initial_request_scheduling") || "",
+      serviceType: params.get("service_type") || "",
     };
   }, []);
 }
@@ -23,56 +35,121 @@ function sliderBackground(value: number) {
   return `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${pct}%, hsl(var(--border)) ${pct}%, hsl(var(--border)) 100%)`;
 }
 
+/**
+ * Map custom value string to UI slider index
+ */
+function timingCustomValueToIndex(value: string): number {
+  const index = TIMING_CUSTOM_VALUES.indexOf(value as any);
+  return index >= 0 ? index : 0;
+}
+
+/**
+ * Map service type string to UI slider index
+ */
+function serviceTypeToIndex(value: string): number {
+  const idx = parseInt(value, 10);
+  return isNaN(idx) || idx < 0 || idx > 3 ? 0 : idx;
+}
+
 export default function RequestScheduling() {
-  const { locationId, contactId } = useLocationAndContactId();
+  const { locationId, contactId, initialRequestScheduling, serviceType } = useLocationAndContactId();
   const [initialTiming, setInitialTiming] = useState(0);
   const [followUpCount, setFollowUpCount] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMode, setSaveMode] = useState<"contact-fields" | "custom-values">("contact-fields");
 
+  // Query for contact custom fields (existing pattern)
   const settingsQuery = trpc.requestScheduling.getSettings.useQuery(
     { locationId, contactId },
-    { enabled: !!locationId && !!contactId }
+    { enabled: !!locationId && !!contactId && saveMode === "contact-fields" }
   );
+  
+  // Mutation for saving to contact fields
   const saveMutation = trpc.requestScheduling.saveSettings.useMutation();
+  
+  // Mutation for saving to location custom values
+  const saveCustomValuesMutation = trpc.requestScheduling.saveCustomValuesSettings.useMutation();
 
   const showToast = useCallback((message: string, isError = false) => {
     toast(message, { style: isError ? { background: "hsl(var(--destructive))", color: "hsl(var(--destructive-foreground))" } : undefined });
   }, []);
 
+  // Determine save mode based on available parameters
+  useEffect(() => {
+    if (initialRequestScheduling || serviceType) {
+      setSaveMode("custom-values");
+    } else {
+      setSaveMode("contact-fields");
+    }
+  }, [initialRequestScheduling, serviceType]);
+
+  // Load from contact fields (existing behavior)
   useEffect(() => {
     const data = settingsQuery.data;
-    if (!data) return;
+    if (!data || saveMode !== "contact-fields") return;
 
     setInitialTiming(data.initialTiming);
     setFollowUpCount(data.followUpCount);
     setIsPaused(data.isPaused);
-  }, [settingsQuery.data]);
+  }, [settingsQuery.data, saveMode]);
 
-  const isLoading = settingsQuery.isLoading;
-  const isError = settingsQuery.isError;
-  const errorMessage = settingsQuery.error instanceof Error ? settingsQuery.error.message : undefined;
+  // Preload from URL query parameters (custom values)
+  useEffect(() => {
+    if (saveMode !== "custom-values") return;
+
+    if (initialRequestScheduling) {
+      const idx = timingCustomValueToIndex(initialRequestScheduling);
+      setInitialTiming(idx);
+    }
+
+    if (serviceType) {
+      const idx = serviceTypeToIndex(serviceType);
+      setFollowUpCount(idx);
+    }
+  }, [initialRequestScheduling, serviceType, saveMode]);
+
+  const isLoading = saveMode === "contact-fields" && settingsQuery.isLoading;
+  const isError = saveMode === "contact-fields" && settingsQuery.isError;
+  const errorMessage = saveMode === "contact-fields" && settingsQuery.error instanceof Error ? settingsQuery.error.message : undefined;
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await saveMutation.mutateAsync({
-        locationId,
-        contactId,
-        initialTiming,
-        followUpCount,
-        isPaused,
-      });
+      if (saveMode === "custom-values") {
+        // Save to location custom values
+        await saveCustomValuesMutation.mutateAsync({
+          locationId,
+          initialRequestScheduling: TIMING_CUSTOM_VALUES[initialTiming],
+          serviceType: FOLLOWUP_CUSTOM_VALUES[followUpCount],
+        });
+      } else {
+        // Save to contact fields (existing behavior)
+        await saveMutation.mutateAsync({
+          locationId,
+          contactId,
+          initialTiming,
+          followUpCount,
+          isPaused,
+        });
+        await settingsQuery.refetch();
+      }
+      
       showToast("Settings saved successfully.");
-      await settingsQuery.refetch();
-    } catch {
-      showToast("Error saving settings. Please try again.", true);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      showToast(`Error saving settings: ${errorMsg}`, true);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleTogglePause = async () => {
+    if (saveMode === "custom-values") {
+      showToast("Pause/Resume is not available with custom values mode.", true);
+      return;
+    }
+
     const next = !isPaused;
     setIsPaused(next);
 
@@ -162,7 +239,15 @@ export default function RequestScheduling() {
             <h2 className="rs-title">Initial Request Scheduling</h2>
             <p className="rs-subtitle">Choose when to send review requests to your contacts after receiving their information.</p>
 
-            <div className="rs-display-value">{INITIAL_LABELS[initialTiming]}</div>
+            {saveMode === "custom-values" && (
+              <div className="rs-info-box" style={{ marginBottom: "12px" }}>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Note:</strong> Saving to custom values. Values will be stored in <code>{"{{custom_values.initial_request_scheduling}}"}</code>.
+                </p>
+              </div>
+            )}
+
+            <div className="rs-display-value">{TIMING_LABELS[initialTiming]}</div>
 
             <div className="rs-slider-wrap">
               <input
@@ -203,6 +288,14 @@ export default function RequestScheduling() {
           <section className="rs-card">
             <h2 className="rs-title">Follow-up Requests</h2>
             <p className="rs-subtitle">Select the number of follow-up requests to send if no response is received.</p>
+
+            {saveMode === "custom-values" && (
+              <div className="rs-info-box" style={{ marginBottom: "12px" }}>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Note:</strong> Saving to custom values. Values will be stored in <code>{"{{custom_values.service_type}}"}</code>.
+                </p>
+              </div>
+            )}
 
             <div className="rs-display-value">
               {followUpCount === 0 ? "No Follow-ups" : `${followUpCount} Follow-up${followUpCount > 1 ? "s" : ""}`}
@@ -245,22 +338,30 @@ export default function RequestScheduling() {
           <h2 className="rs-title">Pause Review Requests</h2>
           <p className="rs-subtitle">Temporarily stop all review requests from being sent to your contacts.</p>
 
-          <div className={`rs-status-box ${isPaused ? "rs-paused" : "rs-active"}`}>
-            <span className="rs-status-label">{isPaused ? "Paused" : "Active"}</span>
-          </div>
-
-          <button className={`rs-pause-btn ${isPaused ? "rs-btn-resume" : "rs-btn-pause"}`} onClick={handleTogglePause}>
-            <span className="inline-flex items-center gap-2 justify-center">
-              {isPaused ? <RefreshCw className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
-              {isPaused ? "Resume Requests" : "Pause Requests"}
-            </span>
-          </button>
-
-          {isPaused ? (
-            <div className="rs-pause-warning">
-              All review requests are currently paused. Contacts have been removed from "01. Review Reactivation First Campaign For Client List" and "02. Review Request New Customers After Review Reactivation". Click Resume Requests to re-enable sending.
+          {saveMode === "custom-values" ? (
+            <div className="rs-info-box">
+              <p className="text-sm text-muted-foreground">Pause/Resume functionality is only available when using contact-based settings.</p>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div className={`rs-status-box ${isPaused ? "rs-paused" : "rs-active"}`}>
+                <span className="rs-status-label">{isPaused ? "Paused" : "Active"}</span>
+              </div>
+
+              <button className={`rs-pause-btn ${isPaused ? "rs-btn-resume" : "rs-btn-pause"}`} onClick={handleTogglePause}>
+                <span className="inline-flex items-center gap-2 justify-center">
+                  {isPaused ? <RefreshCw className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+                  {isPaused ? "Resume Requests" : "Pause Requests"}
+                </span>
+              </button>
+
+              {isPaused ? (
+                <div className="rs-pause-warning">
+                  All review requests are currently paused. Contacts have been removed from "01. Review Reactivation First Campaign For Client List" and "02. Review Request New Customers After Review Reactivation". Click Resume Requests to re-enable sending.
+                </div>
+              ) : null}
+            </>
+          )}
         </section>
       </div>
     </div>
