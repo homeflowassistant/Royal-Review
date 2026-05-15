@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   Ban,
   CheckCircle2,
@@ -12,9 +12,12 @@ import {
   X,
   AlertCircle,
   Link2,
+  Trash2,
+  Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -23,6 +26,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
 const STATUS_FILTERS = [
@@ -32,10 +51,16 @@ const STATUS_FILTERS = [
 ] as const;
 
 type StatusFilter = (typeof STATUS_FILTERS)[number]["key"];
-type ContactStatus = "Follow up" | "Clicked" | "Do Not Contact" | "Finished";
+type ContactStatus = "Follow up" | "Clicked" | "Do Not Contact" | "Finished" | "DND" | "";
 
 function statusStyles(status: ContactStatus) {
   switch (status) {
+    case "":
+      return {
+        label: "—",
+        icon: CircleDot,
+        className: "bg-slate-50 text-slate-500 border-slate-200",
+      };
     case "Follow up":
       return {
         label: "Follow Up",
@@ -49,8 +74,9 @@ function statusStyles(status: ContactStatus) {
         className: "bg-emerald-50 text-emerald-700 border-emerald-200",
       };
     case "Do Not Contact":
+    case "DND":
       return {
-        label: "Do Not Contact",
+        label: "DND",
         icon: Ban,
         className: "bg-orange-50 text-orange-700 border-orange-200",
       };
@@ -78,6 +104,17 @@ function StatusBadge({ status }: { status: ContactStatus }) {
   );
 }
 
+// Enhanced contact type with calculated status
+interface EnhancedContact {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  smsStatus: ContactStatus;
+  emailStatus: ContactStatus;
+  dateAdded: string;
+}
+
 export default function ContactsPage() {
   const locationId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -88,6 +125,22 @@ export default function ContactsPage() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<StatusFilter[]>([]);
   const [cursorHistory, setCursorHistory] = useState<(string[] | undefined)[]>([]);
+  const [enhancedContacts, setEnhancedContacts] = useState<Map<string, ContactStatus>>(new Map());
+
+  // Contact action states
+  const [selectedContact, setSelectedContact] = useState<EnhancedContact | null>(null);
+  const [actionType, setActionType] = useState<"view" | "edit" | "delete" | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    firstName: "",
+    lastName: "",
+    name: "",
+    email: "",
+    phone: "",
+    dnd: false,
+  });
+  const lastStatusRefreshKeyRef = useRef<string>("");
 
   const currentCursor = cursorHistory[cursorHistory.length - 1];
 
@@ -107,9 +160,53 @@ export default function ContactsPage() {
     {
       enabled: !!locationId && connectionQuery.data?.connected === true,
       refetchOnWindowFocus: false,
-      keepPreviousData: true,
+      placeholderData: (previousData) => previousData,
     }
   );
+
+  const refreshContactStatusMutation = trpc.ghl.refreshContactStatus.useMutation();
+  const updateContactMutation = trpc.ghl.updateContact.useMutation();
+  const deleteContactMutation = trpc.ghl.deleteContact.useMutation();
+
+  // Enhance contacts with opportunity-based status
+  useEffect(() => {
+    const enhanceContacts = async () => {
+      if (!contactsQuery.data?.contacts?.length) return;
+
+      const refreshKey = `${locationId}:${contactsQuery.data.contacts.map((contact) => contact.id).join(",")}`;
+      if (lastStatusRefreshKeyRef.current === refreshKey) {
+        return;
+      }
+      lastStatusRefreshKeyRef.current = refreshKey;
+
+      const enhanced = new Map<string, ContactStatus>();
+
+      await Promise.all(
+        contactsQuery.data.contacts.map(async (contact) => {
+          try {
+            const result = await refreshContactStatusMutation.mutateAsync({
+              locationId,
+              contactId: contact.id,
+            });
+
+            const displayStatus = result.status || (contact.smsStatus as ContactStatus) || "";
+            enhanced.set(contact.id, displayStatus as ContactStatus);
+          } catch (error) {
+            console.error(
+              `[Contacts] Error checking won opportunities for contact ${contact.id}:`,
+              error
+            );
+            // Fall back to default status
+            enhanced.set(contact.id, contact.smsStatus as ContactStatus);
+          }
+        })
+      );
+
+      setEnhancedContacts(enhanced);
+    };
+
+    enhanceContacts();
+  }, [contactsQuery.data?.contacts, locationId, refreshContactStatusMutation]);
 
   const isLoading = connectionQuery.isLoading || contactsQuery.isLoading;
   const isError = connectionQuery.isError || contactsQuery.isError;
@@ -122,6 +219,13 @@ export default function ContactsPage() {
   const canGoNext = Boolean(contactsQuery.data?.pagination.searchAfter?.length);
   const canGoPrev = cursorHistory.length > 0;
   const contacts = contactsQuery.data?.contacts ?? [];
+
+  // Map base contacts to enhanced contacts
+  const displayContacts: EnhancedContact[] = contacts.map((contact) => ({
+    ...contact,
+    smsStatus: enhancedContacts.get(contact.id) || (contact.smsStatus as ContactStatus),
+    emailStatus: enhancedContacts.get(contact.id) || (contact.emailStatus as ContactStatus),
+  }));
 
   const handleSearch = () => {
     setAppliedSearch(searchInput.trim());
@@ -142,6 +246,116 @@ export default function ContactsPage() {
         ? current.filter((item) => item !== filter)
         : [...current, filter]
     );
+  };
+
+  // Contact action handlers
+  const handleOpenMenu = (contact: EnhancedContact, type: "view" | "edit" | "delete") => {
+    setSelectedContact(contact);
+    setActionType(type);
+
+    if (type === "edit") {
+      const parts = contact.name.split(" ");
+      setEditForm({
+        firstName: parts[0] ?? "",
+        lastName: parts.slice(1).join(" "),
+        name: contact.name,
+        email: contact.email,
+        phone: contact.phone,
+        dnd: contact.smsStatus === "DND" || contact.smsStatus === "Do Not Contact",
+      });
+    }
+
+    setIsDialogOpen(true);
+  };
+
+  const handleEditContact = async () => {
+    if (!selectedContact) return;
+
+    try {
+      setIsRefreshing(true);
+      console.log("Updating contact:", {
+        locationId,
+        contactId: selectedContact.id,
+        firstName: editForm.firstName.trim() || undefined,
+        lastName: editForm.lastName.trim() || undefined,
+        name: editForm.name.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        dnd: editForm.dnd,
+      });
+
+      await updateContactMutation.mutateAsync({
+        locationId,
+        contactId: selectedContact.id,
+        firstName: editForm.firstName.trim() || undefined,
+        lastName: editForm.lastName.trim() || undefined,
+        name: editForm.name.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        dnd: editForm.dnd,
+      });
+
+      console.log("Contact updated successfully");
+      
+      // Clear the enhanced contacts cache to force re-calculation
+      setEnhancedContacts(new Map());
+      lastStatusRefreshKeyRef.current = "";
+      
+      // Refetch the contacts list with fresh data
+      await contactsQuery.refetch();
+      
+      toast.success("Contact updated successfully");
+      setIsDialogOpen(false);
+      setSelectedContact(null);
+    } catch (error) {
+      console.error("Error editing contact:", error);
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      console.error("Detailed error:", errorMessage);
+      toast.error("Failed to edit contact", {
+        description: errorMessage,
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleDeleteContact = async () => {
+    if (!selectedContact) return;
+
+    try {
+      setIsRefreshing(true);
+      console.log("Deleting contact:", {
+        locationId,
+        contactId: selectedContact.id,
+      });
+
+      await deleteContactMutation.mutateAsync({
+        locationId,
+        contactId: selectedContact.id,
+      });
+
+      console.log("Contact deleted successfully");
+      
+      // Clear the enhanced contacts cache to force re-calculation
+      setEnhancedContacts(new Map());
+      lastStatusRefreshKeyRef.current = "";
+      
+      // Refetch the contacts list with fresh data
+      await contactsQuery.refetch();
+      
+      toast.success("Contact deleted successfully");
+      setIsDialogOpen(false);
+      setSelectedContact(null);
+    } catch (error) {
+      console.error("Error deleting contact:", error);
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      console.error("Detailed error:", errorMessage);
+      toast.error("Failed to delete contact", {
+        description: errorMessage,
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   if (!locationId) {
@@ -312,14 +526,14 @@ export default function ContactsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : contacts.length === 0 ? (
+              ) : displayContacts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="py-16 text-center text-muted-foreground">
                     No contacts found for the current search and filters.
                   </TableCell>
                 </TableRow>
               ) : (
-                contacts.map((contact) => (
+                displayContacts.map((contact) => (
                   <TableRow key={contact.id}>
                     <TableCell className="font-medium text-foreground">{contact.name}</TableCell>
                     <TableCell>{contact.phone || "-"}</TableCell>
@@ -334,9 +548,36 @@ export default function ContactsPage() {
                       })}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "view")}
+                            className="cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            <span>View Details</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "edit")}
+                            className="cursor-pointer"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            <span>Edit Contact</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "delete")}
+                            className="cursor-pointer text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            <span>Delete Contact</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
@@ -346,7 +587,7 @@ export default function ContactsPage() {
 
           <div className="flex items-center justify-between gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
             <div>
-              Showing {contacts.length} contact{contacts.length === 1 ? "" : "s"}
+              Showing {displayContacts.length} contact{displayContacts.length === 1 ? "" : "s"}
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setCursorHistory((current) => current.slice(0, -1))} disabled={!canGoPrev} className="gap-2">
@@ -357,8 +598,9 @@ export default function ContactsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  if (!contactsQuery.data?.pagination.searchAfter) return;
-                  setCursorHistory((current) => [...current, contactsQuery.data?.pagination.searchAfter]);
+                  const nextCursor = contactsQuery.data?.pagination.searchAfter;
+                  if (!nextCursor) return;
+                  setCursorHistory((current) => [...current, nextCursor]);
                 }}
                 disabled={!canGoNext}
                 className="gap-2"
@@ -370,6 +612,159 @@ export default function ContactsPage() {
           </div>
         </section>
       </main>
+
+      {/* Contact Action Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-md">
+          {actionType === "view" && selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Contact Details</DialogTitle>
+                <DialogDescription>
+                  View information for {selectedContact.name}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Name</label>
+                  <p className="text-foreground">{selectedContact.name}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Phone</label>
+                  <p className="text-foreground">{selectedContact.phone || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Email</label>
+                  <p className="text-foreground">{selectedContact.email || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">SMS Status</label>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedContact.smsStatus} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Email Status</label>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedContact.emailStatus} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Date Added</label>
+                  <p className="text-foreground">
+                    {new Date(selectedContact.dateAdded).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {actionType === "edit" && selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Edit Contact</DialogTitle>
+                <DialogDescription>
+                  Edit information for {selectedContact.name}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-name">Full Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={editForm.name}
+                    onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+                    placeholder="Contact name"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-first-name">First Name</Label>
+                    <Input
+                      id="edit-first-name"
+                      value={editForm.firstName}
+                      onChange={(event) => setEditForm((current) => ({ ...current, firstName: event.target.value }))}
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-last-name">Last Name</Label>
+                    <Input
+                      id="edit-last-name"
+                      value={editForm.lastName}
+                      onChange={(event) => setEditForm((current) => ({ ...current, lastName: event.target.value }))}
+                      placeholder="Last name"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="Email address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    value={editForm.phone}
+                    onChange={(event) => setEditForm((current) => ({ ...current, phone: event.target.value }))}
+                    placeholder="Phone number"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">DND</p>
+                    <p className="text-xs text-muted-foreground">Mark this contact as do not disturb</p>
+                  </div>
+                  <Switch
+                    checked={editForm.dnd}
+                    onCheckedChange={(checked) => setEditForm((current) => ({ ...current, dnd: checked }))}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={updateContactMutation.isPending || isRefreshing}>
+                  Close
+                </Button>
+                <Button onClick={handleEditContact} disabled={updateContactMutation.isPending || isRefreshing} className="gap-2">
+                  {isRefreshing && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {actionType === "delete" && selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-red-600">Delete Contact</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete {selectedContact.name}?
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  This action cannot be undone. The contact will be permanently deleted from GoHighLevel.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={deleteContactMutation.isPending || isRefreshing}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteContact} disabled={deleteContactMutation.isPending || isRefreshing} className="gap-2">
+                  {isRefreshing && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Delete Contact
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

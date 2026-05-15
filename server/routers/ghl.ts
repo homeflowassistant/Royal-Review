@@ -21,6 +21,12 @@ import {
   sendTestMessage,
   processContact,
   getValidAccessToken,
+  getPipelines,
+  hasOpportunityInStatus,
+  getContactById,
+  updateContactById,
+  deleteContactById,
+  syncContactReviewStatus,
   type GHLContactData,
   type GHLContactStatusFilter,
 } from "../ghl-service";
@@ -66,6 +72,37 @@ const sendTestMessageSchema = z.object({
   contactId: z.string().min(1),
   message: z.string().min(1),
   attachmentUrl: z.string().optional(),
+});
+
+const updateContactSchema = z.object({
+  locationId: z.string().min(1),
+  contactId: z.string().min(1),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  name: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  address1: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  postalCode: z.string().optional(),
+  website: z.string().optional(),
+  source: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  customFields: z
+    .array(
+      z.object({
+        key: z.string(),
+        field_value: z.any().optional(),
+      })
+    )
+    .optional(),
+  dnd: z.boolean().optional(),
+});
+
+const deleteContactSchema = z.object({
+  locationId: z.string().min(1),
+  contactId: z.string().min(1),
 });
 
 export const ghlRouter = router({
@@ -273,5 +310,114 @@ export const ghlRouter = router({
           message: error instanceof Error ? error.message : "Connection failed",
         };
       }
+    }),
+
+  /**
+   * Fetch pipelines for a location.
+   * Used to find the Review pipeline ID dynamically.
+   */
+  getPipelines: publicProcedure
+    .input(z.object({ locationId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const pipelines = await getPipelines(input.locationId.trim());
+      return pipelines;
+    }),
+
+  /**
+   * Fetch a single contact's current details.
+   */
+  getContact: publicProcedure
+    .input(z.object({ locationId: z.string().min(1), contactId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      return getContactById(input.locationId.trim(), input.contactId.trim());
+    }),
+
+  /**
+   * Refresh and optionally sync a contact's review status.
+   */
+  refreshContactStatus: publicProcedure
+    .input(z.object({ locationId: z.string().min(1), contactId: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      return syncContactReviewStatus(input.locationId.trim(), input.contactId.trim());
+    }),
+
+  /**
+   * Update a contact directly in GHL.
+   */
+  updateContact: publicProcedure
+    .input(updateContactSchema)
+    .mutation(async ({ input }) => {
+      console.log("[tRPC] updateContact called with:", {
+        locationId: input.locationId,
+        contactId: input.contactId,
+      });
+
+      try {
+        const updated = await updateContactById(input.locationId.trim(), input.contactId.trim(), {
+          firstName: input.firstName?.trim(),
+          lastName: input.lastName?.trim(),
+          name: input.name?.trim(),
+          email: input.email?.trim(),
+          phone: input.phone?.trim(),
+          address1: input.address1?.trim(),
+          city: input.city?.trim(),
+          state: input.state?.trim(),
+          postalCode: input.postalCode?.trim(),
+          website: input.website?.trim(),
+          source: input.source?.trim(),
+          tags: input.tags,
+          customFields: input.customFields,
+          dnd: input.dnd,
+        });
+
+        console.log("[tRPC] updateContact succeeded");
+        return { contact: updated };
+      } catch (error) {
+        console.error("[tRPC] updateContact failed:", error);
+        throw error;
+      }
+    }),
+
+  /**
+   * Delete a contact directly in GHL.
+   */
+  deleteContact: publicProcedure
+    .input(deleteContactSchema)
+    .mutation(async ({ input }) => {
+      console.log("[tRPC] deleteContact called with:", {
+        locationId: input.locationId,
+        contactId: input.contactId,
+      });
+
+      try {
+        await deleteContactById(input.locationId.trim(), input.contactId.trim());
+        console.log("[tRPC] deleteContact succeeded");
+        return { success: true };
+      } catch (error) {
+        console.error("[tRPC] deleteContact failed:", error);
+        throw error;
+      }
+    }),
+
+  /**
+   * Check if a contact has a won opportunity in a specific pipeline.
+   * Used to determine "Clicked" status.
+   */
+  hasWonOpportunity: publicProcedure
+    .input(
+      z.object({
+        locationId: z.string().min(1),
+        contactId: z.string().min(1),
+        pipelineId: z.string().min(1),
+      })
+    )
+    .query(async ({ input }) => {
+      const hasWon = await hasOpportunityInStatus(
+        input.locationId.trim(),
+        input.contactId.trim(),
+        input.pipelineId.trim(),
+        "won"
+      );
+      return { hasWon };
     }),
 });

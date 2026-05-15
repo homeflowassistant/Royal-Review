@@ -10,13 +10,27 @@
 
 import { eq, or } from "drizzle-orm";
 import { getDb } from "./db";
-import { ghlInstallations, type GHLInstallation } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { ghlInstallations, type GHLInstallation } from "../drizzle/schema";
+import {
+  calculateReviewContactStatus,
+  findReviewPipelineId,
+  normalize,
+} from "../shared/reviewStatus";
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 // Refresh tokens 10 minutes before they expire
 const TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000;
+const PIPELINE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type PipelineRecord = { id: string; name: string };
+type PipelineCacheEntry = {
+  cachedAt: number;
+  promise: Promise<PipelineRecord[]>;
+};
+
+const pipelineCache = new Map<string, PipelineCacheEntry>();
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -125,6 +139,17 @@ function getCustomValueMap(customValues: Record<string, unknown>[]): Map<string,
   return map;
 }
 
+export async function getLocationCustomValueMap(locationId: string): Promise<Map<string, { id: string; value: string }>> {
+  const { accessToken } = await getAccessTokenAndInstallation(locationId);
+  const response = await fetchJson<{ customValues?: Record<string, unknown>[] }>(
+    `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues`,
+    accessToken,
+    { method: "GET" }
+  );
+
+  return getCustomValueMap(response.customValues ?? []);
+}
+
 async function getAccessTokenAndInstallation(locationId: string) {
   const installation = await getInstallation(locationId);
   if (!installation) {
@@ -196,31 +221,50 @@ function getContactWorkflows(contact: Record<string, unknown>, field: "activeWor
   return toStringArray(contact[field]);
 }
 
-function hasClickedTag(tags: string[]): boolean {
-  return tags.some((tag) => tag.toLowerCase() === "clicked");
-}
-
-function hasReviewWorkflow(workflows: string[]): boolean {
-  return workflows.some((workflow) => {
-    const normalized = workflow.toLowerCase();
-    return REVIEW_WORKFLOW_NAMES.some((name) => {
-      const lower = name.toLowerCase();
-      return normalized === lower || normalized.includes(lower);
-    });
-  });
-}
-
 function determineContactStatus(contact: Record<string, unknown>): GHLListedContact["smsStatus"] {
+  // Check DND first
   const dnd = Boolean(contact.dnd);
-  const tags = getContactTags(contact);
-  const activeWorkflows = getContactWorkflows(contact, "activeWorkflows");
-  const finishedWorkflows = getContactWorkflows(contact, "finishedWorkflows");
-
   if (dnd) return "Do Not Contact";
-  if (hasClickedTag(tags)) return "Clicked";
-  if (hasReviewWorkflow(activeWorkflows)) return "Follow up";
-  if (hasReviewWorkflow(finishedWorkflows)) return "Finished";
 
+  // Check tags using normalized comparison
+  const rawTags = contact.tags ?? [];
+  if (!Array.isArray(rawTags)) {
+    // If no tags, return Finished as default
+    return "Finished";
+  }
+
+  const normalizedTags = rawTags
+    .map((tag) => {
+      if (typeof tag === "string") return tag.toLowerCase().trim();
+      if (tag && typeof tag === "object") {
+        const name = (tag as Record<string, unknown>).name ?? (tag as Record<string, unknown>).tag ?? "";
+        return String(name).toLowerCase().trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+
+  // Check for finished workflow tags
+  const hasFinishedReviewTag = normalizedTags.some(
+    (tag) =>
+      tag === "review_reactivation_finished" ||
+      tag === "review_request_finished"
+  );
+  if (hasFinishedReviewTag) return "Finished";
+
+  // Check for "clicked" tag for backward compatibility
+  const hasClickedTag = normalizedTags.some((tag) => tag === "clicked");
+  if (hasClickedTag) return "Clicked";
+
+  // Check for active workflow tags
+  const hasActiveReviewTag = normalizedTags.some(
+    (tag) =>
+      tag === "review_reactivation_active" ||
+      tag === "review_request_active"
+  );
+  if (hasActiveReviewTag) return "Follow up";
+
+  // Default to blank when there is no matching status
   return "Finished";
 }
 
@@ -355,6 +399,116 @@ export async function searchContacts(
       pageLimit,
     },
   };
+}
+
+// ─── Pipelines & Opportunities (Tag-Based Status) ──────────────────
+
+/**
+ * Fetch pipelines for a location.
+ * Used to find the Review pipeline ID dynamically.
+ */
+export async function getPipelines(
+  locationId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const accessToken = await getValidAccessToken(locationId);
+
+  const response = await fetch(`${GHL_BASE_URL}/opportunities/pipelines?locationId=${encodeURIComponent(locationId)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`[GHL] Failed to fetch pipelines: ${response.status} ${errorBody}`);
+    return [];
+  }
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const pipelinesArray = Array.isArray(body.pipelines)
+    ? body.pipelines
+    : Array.isArray(body.data)
+      ? body.data
+      : [];
+
+  return pipelinesArray
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((pipeline) => ({
+      id: typeof pipeline.id === "string" ? pipeline.id : "",
+      name: typeof pipeline.name === "string" ? pipeline.name : "",
+    }))
+    .filter((p) => p.id && p.name);
+}
+
+async function getPipelinesCached(locationId: string): Promise<PipelineRecord[]> {
+  const now = Date.now();
+  const cached = pipelineCache.get(locationId);
+
+  if (cached && now - cached.cachedAt < PIPELINE_CACHE_TTL_MS) {
+    return cached.promise;
+  }
+
+  const promise = getPipelines(locationId).catch((error) => {
+    pipelineCache.delete(locationId);
+    throw error;
+  });
+
+  pipelineCache.set(locationId, {
+    cachedAt: now,
+    promise,
+  });
+
+  return promise;
+}
+
+export async function getReviewPipelineId(locationId: string): Promise<string | null> {
+  const pipelines = await getPipelinesCached(locationId);
+  return findReviewPipelineId(pipelines);
+}
+
+/**
+ * Search opportunities for a contact in a specific pipeline with a given status.
+ * Returns true if at least one matching opportunity exists.
+ */
+export async function hasOpportunityInStatus(
+  locationId: string,
+  contactId: string,
+  pipelineId: string,
+  status: string
+): Promise<boolean> {
+  const accessToken = await getValidAccessToken(locationId);
+
+  const response = await fetch(
+    `${GHL_BASE_URL}/opportunities/search?location_id=${encodeURIComponent(locationId)}&contact_id=${encodeURIComponent(contactId)}&pipeline_id=${encodeURIComponent(pipelineId)}&status=${encodeURIComponent(status)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Version: GHL_API_VERSION,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(
+      `[GHL] Failed to search opportunities for contact ${contactId}: ${response.status} ${errorBody}`
+    );
+    return false;
+  }
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const opportunities = Array.isArray(body.opportunities)
+    ? body.opportunities
+    : Array.isArray(body.data)
+      ? body.data
+      : [];
+
+  return Array.isArray(opportunities) && opportunities.length > 0;
 }
 
 export async function getMessagingContext(locationId: string): Promise<GHLMessagingContext> {
@@ -591,7 +745,17 @@ const customFieldCache = new Map<string, Map<string, string>>();
  * Converts to lowercase and replaces spaces/hyphens with underscores.
  */
 function normalizeFieldName(name: string): string {
-  return name.toLowerCase().replace(/[\s\-]/g, "_");
+  // Convert camelCase to snake_case, replace spaces/hyphens/other non-alphanumerics with
+  // underscores, collapse multiple underscores, trim leading/trailing underscores,
+  // and lowercase the result. This makes matching robust against keys like
+  // "initialRequestDelay", "initial-request-delay", or "Initial Request Delay".
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s\-]+/g, "_")
+    .replace(/[^a-zA-Z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .toLowerCase();
 }
 
 /**
@@ -669,8 +833,16 @@ export async function getCustomFieldIdByName(
 
     customFieldCache.set(locationId, fieldMap);
 
-    // Return the requested field
-    return fieldMap.get(normalizedPattern) ?? null;
+    // Return the requested field; if not found, log available fields to help debugging
+    const found = fieldMap.get(normalizedPattern) ?? null;
+    if (!found) {
+      const available = Array.from(fieldMap.keys()).slice(0, 50).join(", ");
+      console.warn(
+        `[GHL] Custom field not found for pattern "${fieldNamePattern}". Available fields: ${available}`
+      );
+    }
+
+    return found;
   } catch (error) {
     console.error(`[GHL] Error discovering custom field "${fieldNamePattern}":`, error);
     return null;
@@ -687,6 +859,114 @@ export function clearCustomFieldCache(locationId?: string): void {
   } else {
     customFieldCache.clear();
   }
+}
+
+/**
+ * Upsert a custom value at the location level.
+ * If a custom value with the given name exists, update it; otherwise create it.
+ * 
+ * @param locationId - The GHL location ID
+ * @param name - The custom value name (e.g., "initial_request_scheduling")
+ * @param value - The custom value (e.g., "48 hours")
+ * @returns The created/updated custom value object with id, name, and value
+ * @throws Error if the API call fails or token is invalid
+ */
+export async function upsertGhlCustomValue(
+  locationId: string,
+  name: string,
+  value: string
+): Promise<{ id: string; name: string; value: string }> {
+  const accessToken = await getValidAccessToken(locationId);
+
+  // First, fetch existing custom values to find if this one exists
+  const getResponse = await fetch(
+    `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Version: GHL_API_VERSION,
+      },
+    }
+  );
+
+  if (!getResponse.ok) {
+    const errorBody = await getResponse.text();
+    console.error(`[GHL] Failed to fetch custom values: ${getResponse.status} ${errorBody}`);
+    throw new Error(`Failed to fetch custom values: ${getResponse.status}`);
+  }
+
+  const data = (await getResponse.json()) as { customValues?: Record<string, unknown>[] };
+  const customValues = data.customValues ?? [];
+
+  // Find existing custom value by matching name/key defensively using the same normalizer
+  let existingId: string | undefined;
+  const normalizedTarget = normalizeFieldName(name);
+  for (const customValue of customValues) {
+    const keyCandidates = [
+      typeof customValue.fieldKey === "string" ? customValue.fieldKey : undefined,
+      typeof customValue.key === "string" ? customValue.key : undefined,
+      typeof customValue.name === "string" ? customValue.name : undefined,
+    ].filter(Boolean) as string[];
+
+    for (const candidate of keyCandidates) {
+      if (normalizeFieldName(candidate) === normalizedTarget || candidate === name) {
+        existingId = typeof customValue.id === "string" ? customValue.id : undefined;
+        break;
+      }
+    }
+
+    if (existingId) break;
+  }
+
+  // Determine URL and HTTP method
+  const url = existingId
+    ? `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues/${encodeURIComponent(existingId)}`
+    : `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues`;
+
+  const method = existingId ? "PUT" : "POST";
+
+  // Upsert the custom value
+  // GHL API expects just name and value for custom values
+  const payload: Record<string, unknown> = { name, value };
+
+  const upsertResponse = await fetch(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!upsertResponse.ok) {
+    const errorBody = await upsertResponse.text();
+    console.error(`[GHL] Failed to upsert custom value "${name}":`, {
+      status: upsertResponse.status,
+      method,
+      url,
+      payload,
+      errorBody,
+    });
+    throw new Error(`Failed to save custom value "${name}": ${upsertResponse.status} ${errorBody}`);
+  }
+
+  const upsertData = (await upsertResponse.json()) as Record<string, unknown>;
+  const customValue = upsertData.customValue ?? upsertData;
+
+  if (!customValue) {
+    const available = customValues.map((v) => (typeof v.name === "string" ? v.name : typeof v.key === "string" ? v.key : "<unknown>")).slice(0,50).join(", ");
+    console.warn(`[GHL] upsertGhlCustomValue could not parse response for "${name}". Available values: ${available}`);
+  }
+
+  return {
+    id: typeof customValue.id === "string" ? customValue.id : existingId ?? "",
+    name: typeof customValue.name === "string" ? customValue.name : name,
+    value: typeof customValue.value === "string" ? customValue.value : value,
+  };
 }
 
 // ─── Token Exchange ──────────────────────────────────────────────────
@@ -855,7 +1135,98 @@ export async function getValidAccessToken(
   return installation.accessToken;
 }
 
+/**
+ * Force a refresh of the token for a location and persist the rotated refresh token.
+ */
+export async function refreshInstallationAccessToken(locationId: string): Promise<string> {
+  const installation = await getInstallation(locationId);
+  if (!installation) {
+    throw new Error(`No GHL installation found for location: ${locationId}`);
+  }
+
+  const newTokens = await refreshAccessToken(installation.refreshToken);
+  await upsertInstallation(newTokens, locationId);
+  return newTokens.access_token;
+}
+
 // ─── GHL API Calls ───────────────────────────────────────────────────
+
+function cleanObject<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && entry !== "")
+  ) as T;
+}
+
+export interface GHLUpsertContactResponse {
+  new?: boolean;
+  contact?: {
+    id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export async function upsertContactWithTag(
+  locationId: string,
+  contact: {
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    tags?: string[];
+    source?: string;
+  },
+  options: { retryOnUnauthorized?: boolean } = {}
+): Promise<GHLUpsertContactResponse> {
+  const baseBody = cleanObject({
+    locationId,
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    name: contact.name,
+    email: contact.email,
+    phone: contact.phone,
+    tags: contact.tags ?? ["trigger-royal-review"],
+    source: contact.source ?? "zapier",
+  });
+
+  const postContact = async (accessToken: string) => {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/upsert`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Version: GHL_API_VERSION,
+      },
+      body: JSON.stringify(baseBody),
+    });
+
+    const body = await response.json().catch(() => ({}));
+    return { response, body };
+  };
+
+  let accessToken = await getValidAccessToken(locationId);
+  let { response, body } = await postContact(accessToken);
+
+  if (!response.ok && response.status === 401 && options.retryOnUnauthorized !== false) {
+    accessToken = await refreshInstallationAccessToken(locationId);
+    const retry = await postContact(accessToken);
+    response = retry.response;
+    body = retry.body;
+  }
+
+  if (!response.ok) {
+    const errorMessage =
+      typeof body === "object" && body !== null && typeof (body as Record<string, unknown>).message === "string"
+        ? String((body as Record<string, unknown>).message)
+        : `Failed to upsert contact: ${response.status}`;
+
+    throw new Error(errorMessage);
+  }
+
+  return body as GHLUpsertContactResponse;
+}
 
 /**
  * Create a single contact in GHL.
@@ -895,6 +1266,133 @@ export async function createContact(
   }
 
   return response.json() as Promise<GHLCreateContactResponse>;
+}
+
+export async function getContactById(
+  locationId: string,
+  contactId: string
+): Promise<Record<string, unknown>> {
+  const accessToken = await getValidAccessToken(locationId);
+
+  const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Failed to fetch contact: ${response.status} ${errorBody}`);
+  }
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return (body.contact && typeof body.contact === "object") ? (body.contact as Record<string, unknown>) : body;
+}
+
+export async function updateContactById(
+  locationId: string,
+  contactId: string,
+  updates: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  console.log("[GHL] updateContactById starting", { locationId, contactId });
+
+  const accessToken = await getValidAccessToken(locationId);
+  if (!accessToken) {
+    throw new Error("Failed to get valid access token for location: " + locationId);
+  }
+
+  console.log("[GHL] Got access token, preparing payload");
+  const payload = cleanObject(updates);
+  console.log("[GHL] Payload to send:", payload);
+
+  const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  console.log("[GHL] PUT response status:", response.status);
+
+  if (response.ok) {
+    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    console.log("[GHL] Success response:", body);
+    return (body.contact && typeof body.contact === "object") ? (body.contact as Record<string, unknown>) : body;
+  }
+
+  const errorBody = await response.text();
+  const errorMessage = `Failed to update contact: ${response.status} ${errorBody}`;
+  console.error("[GHL] Error response:", errorMessage);
+  throw new Error(errorMessage);
+}
+
+export async function deleteContactById(locationId: string, contactId: string): Promise<void> {
+  console.log("[GHL] deleteContactById starting", { locationId, contactId });
+
+  const accessToken = await getValidAccessToken(locationId);
+  if (!accessToken) {
+    throw new Error("Failed to get valid access token for location: " + locationId);
+  }
+
+  console.log("[GHL] Got access token, sending DELETE request");
+  const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+  });
+
+  console.log("[GHL] DELETE response status:", response.status);
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    const errorMessage = `Failed to delete contact: ${response.status} ${errorBody}`;
+    console.error("[GHL] Delete error:", errorMessage);
+    throw new Error(errorMessage);
+  }
+
+  console.log("[GHL] Delete succeeded");
+}
+
+export async function syncContactReviewStatus(locationId: string, contactId: string): Promise<{
+  contact: Record<string, unknown>;
+  reviewPipelineId: string | null;
+  isWonInReviewPipeline: boolean;
+  status: ReviewContactStatus;
+  synced: boolean;
+}> {
+  const contact = await getContactById(locationId, contactId);
+  const reviewPipelineId = await getReviewPipelineId(locationId);
+
+  let isWonInReviewPipeline = false;
+  if (reviewPipelineId) {
+    try {
+      isWonInReviewPipeline = await hasOpportunityInStatus(locationId, contactId, reviewPipelineId, "won");
+    } catch (error) {
+      console.warn(`[GHL] Failed to check won opportunity for contact ${contactId}:`, error);
+    }
+  } else {
+    console.warn(`[GHL] No Review pipeline found for location ${locationId}`);
+  }
+
+  const status = calculateReviewContactStatus({ contact, isWonInReviewPipeline });
+
+  return {
+    contact,
+    reviewPipelineId,
+    isWonInReviewPipeline,
+    status,
+    synced: false,
+  };
 }
 
 /**
