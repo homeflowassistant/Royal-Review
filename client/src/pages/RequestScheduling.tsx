@@ -184,10 +184,7 @@ export default function RequestScheduling() {
               <ul className="rs-info-list">
                 <li>Review requests are only sent between 9 AM and 7 PM local time</li>
                 <li>If scheduled outside these hours, the request will be sent the next available day</li>
-                <li>
-                  For custom scheduling needs, contact{' '}
-                  <a href="mailto:support@reviewharvest.com">support@reviewharvest.com</a>
-                </li>
+                <li>For custom scheduling needs, contact your administrator.</li>
               </ul>
             </div>
           </section>
