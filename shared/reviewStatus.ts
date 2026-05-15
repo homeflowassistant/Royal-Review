@@ -129,11 +129,11 @@ export function findReviewPipelineId(pipelines: any[]): string | null {
 /**
  * Calculate the review contact status based on contact data and won opportunity status.
  *
- * Priority order:
- * 1. DND → "DND"
- * 2. Won in Review pipeline → "Clicked"
- * 3. Active workflow tag → "Follow up"
- * 4. Finished workflow tag (no active) → "Finished"
+ * Priority order (corrected):
+ * 1. DND → "DND" (always highest priority)
+ * 2. Finished workflow tag → "Finished" (overrides everything except DND)
+ * 3. Won in Review pipeline → "Clicked"
+ * 4. Active workflow tag → "Follow up"
  * 5. None → "" (blank)
  */
 export function calculateReviewContactStatus(params: {
@@ -144,10 +144,18 @@ export function calculateReviewContactStatus(params: {
   const isDnd = isContactDnd(contact);
   const { hasActiveWorkflowTag, hasFinishedWorkflowTag } = getWorkflowTagState(contact);
 
+  // Priority 1: DND always overrides everything
   if (isDnd) return "DND";
-  if (isWonInReviewPipeline) return "Clicked";
-  if (hasActiveWorkflowTag) return "Follow up";
+
+  // Priority 2: Finished tag overrides all other statuses (Clicked, Follow up, Active)
   if (hasFinishedWorkflowTag) return "Finished";
 
+  // Priority 3: Won opportunity (Clicked) overrides active workflow tag
+  if (isWonInReviewPipeline) return "Clicked";
+
+  // Priority 4: Active workflow tag
+  if (hasActiveWorkflowTag) return "Follow up";
+
+  // Priority 5: No matching conditions
   return "";
 }

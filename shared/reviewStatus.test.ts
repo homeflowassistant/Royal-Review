@@ -10,7 +10,7 @@ import {
   getNormalizedTags,
   isContactDnd,
   type ReviewContactStatus,
-} from "@shared/reviewStatus";
+} from "./reviewStatus";
 
 describe("Tag-based Review Contact Status Calculation", () => {
   describe("Acceptance Criteria", () => {
@@ -84,6 +84,20 @@ describe("Tag-based Review Contact Status Calculation", () => {
       expect(status).toBe("Finished");
     });
 
+    it("Finished tag should override Won opportunity (Clicked)", () => {
+      const contact = {
+        dnd: false,
+        tags: ["review_reactivation_finished"],
+      };
+
+      const status = calculateReviewContactStatus({
+        contact,
+        isWonInReviewPipeline: true,
+      });
+
+      expect(status).toBe("Finished");
+    });
+
     it("Finished Review Request tag (no active) should return 'Finished'", () => {
       const contact = {
         dnd: false,
@@ -98,7 +112,7 @@ describe("Tag-based Review Contact Status Calculation", () => {
       expect(status).toBe("Finished");
     });
 
-    it("Both active and finished tags should return 'Follow up' (active takes priority)", () => {
+    it("Both active and finished tags - finished should take priority", () => {
       const contact = {
         dnd: false,
         tags: [
@@ -112,7 +126,7 @@ describe("Tag-based Review Contact Status Calculation", () => {
         isWonInReviewPipeline: false,
       });
 
-      expect(status).toBe("Follow up");
+      expect(status).toBe("Finished");
     });
 
     it("No matching data should return empty string", () => {
@@ -143,7 +157,21 @@ describe("Tag-based Review Contact Status Calculation", () => {
       expect(status).toBe("DND");
     });
 
-    it("Priority: Won opportunity overrides workflow tags", () => {
+    it("Priority: Won opportunity overrides active workflow tag", () => {
+      const contact = {
+        dnd: false,
+        tags: ["review_reactivation_active"],
+      };
+
+      const status = calculateReviewContactStatus({
+        contact,
+        isWonInReviewPipeline: true,
+      });
+
+      expect(status).toBe("Clicked");
+    });
+
+    it("Priority: Finished tag overrides Won opportunity", () => {
       const contact = {
         dnd: false,
         tags: ["review_reactivation_finished"],
@@ -154,7 +182,7 @@ describe("Tag-based Review Contact Status Calculation", () => {
         isWonInReviewPipeline: true,
       });
 
-      expect(status).toBe("Clicked");
+      expect(status).toBe("Finished");
     });
 
     it("Priority: Active workflow tag overrides finished workflow tag", () => {

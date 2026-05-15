@@ -12,6 +12,9 @@ import {
   X,
   AlertCircle,
   Link2,
+  Trash2,
+  Edit,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +26,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import {
   calculateReviewContactStatus,
@@ -107,6 +124,11 @@ export default function ContactsPage() {
   const [cursorHistory, setCursorHistory] = useState<(string[] | undefined)[]>([]);
   const [enhancedContacts, setEnhancedContacts] = useState<Map<string, ContactStatus>>(new Map());
   const [reviewPipelineId, setReviewPipelineId] = useState<string | null>(null);
+
+  // Contact action states
+  const [selectedContact, setSelectedContact] = useState<EnhancedContact | null>(null);
+  const [actionType, setActionType] = useState<"view" | "edit" | "delete" | "add" | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const currentCursor = cursorHistory[cursorHistory.length - 1];
 
@@ -257,6 +279,60 @@ export default function ContactsPage() {
         ? current.filter((item) => item !== filter)
         : [...current, filter]
     );
+  };
+
+  // Contact action handlers
+  const handleOpenMenu = (contact: EnhancedContact, type: "view" | "edit" | "delete" | "add") => {
+    setSelectedContact(contact);
+    setActionType(type);
+    setIsDialogOpen(true);
+  };
+
+  const handleEditContact = async () => {
+    if (!selectedContact) return;
+
+    try {
+      alert(
+        `Edit functionality coming soon for contact: ${selectedContact.name}\n\nYou can edit this contact in GHL directly.`
+      );
+      setIsDialogOpen(false);
+      // Future: Implement edit modal with form
+    } catch (error) {
+      console.error("Error editing contact:", error);
+      alert("Failed to edit contact");
+    }
+  };
+
+  const handleDeleteContact = async () => {
+    if (!selectedContact) return;
+
+    try {
+      const confirmed = confirm(
+        `Are you sure you want to delete ${selectedContact.name}? This action cannot be undone.`
+      );
+      if (!confirmed) return;
+
+      alert(
+        `Delete functionality coming soon for contact: ${selectedContact.name}\n\nYou can delete this contact in GHL directly.`
+      );
+      setIsDialogOpen(false);
+      // Future: Implement delete via API
+      // await trpc.ghl.deleteContact.mutate({ contactId: selectedContact.id });
+    } catch (error) {
+      console.error("Error deleting contact:", error);
+      alert("Failed to delete contact");
+    }
+  };
+
+  const handleAddContact = async () => {
+    try {
+      alert("Add new contact functionality coming soon!\n\nFor now, use the Single Contact Form to add contacts.");
+      setIsDialogOpen(false);
+      // Future: Implement add contact form
+    } catch (error) {
+      console.error("Error adding contact:", error);
+      alert("Failed to add contact");
+    }
   };
 
   if (!locationId) {
@@ -449,9 +525,43 @@ export default function ContactsPage() {
                       })}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "view")}
+                            className="cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            <span>View Details</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "edit")}
+                            className="cursor-pointer"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            <span>Edit Contact</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "delete")}
+                            className="cursor-pointer text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            <span>Delete Contact</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleOpenMenu(contact, "add")}
+                            className="cursor-pointer"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            <span>Add New Contact</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
@@ -486,6 +596,121 @@ export default function ContactsPage() {
           </div>
         </section>
       </main>
+
+      {/* Contact Action Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-md">
+          {actionType === "view" && selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Contact Details</DialogTitle>
+                <DialogDescription>
+                  View information for {selectedContact.name}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Name</label>
+                  <p className="text-foreground">{selectedContact.name}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Phone</label>
+                  <p className="text-foreground">{selectedContact.phone || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Email</label>
+                  <p className="text-foreground">{selectedContact.email || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">SMS Status</label>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedContact.smsStatus} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Email Status</label>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedContact.emailStatus} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Date Added</label>
+                  <p className="text-foreground">
+                    {new Date(selectedContact.dateAdded).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {actionType === "edit" && selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Edit Contact</DialogTitle>
+                <DialogDescription>
+                  Edit information for {selectedContact.name}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  Edit functionality is coming soon. For now, you can edit this contact directly in GoHighLevel.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Close
+                </Button>
+                <Button onClick={handleEditContact}>Edit in GHL</Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {actionType === "delete" && selectedContact && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-red-600">Delete Contact</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete {selectedContact.name}?
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  This action cannot be undone. The contact will be permanently deleted from GoHighLevel.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteContact}>
+                  Delete Contact
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {actionType === "add" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Add New Contact</DialogTitle>
+                <DialogDescription>
+                  Create a new contact
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  To add a new contact, please use the Single Contact Form or CSV Upload feature in the main navigation.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setIsDialogOpen(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
