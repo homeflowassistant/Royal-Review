@@ -54,6 +54,11 @@ export default function RequestScheduling() {
   const [followUpCount, setFollowUpCount] = useState(3);
   const [isSaving, setIsSaving] = useState(false);
 
+  const settingsQuery = trpc.requestScheduling.getSettings.useQuery(
+    { locationId },
+    { enabled: !!locationId }
+  );
+
   // Mutation for saving to location custom values
   const saveCustomValuesMutation = trpc.requestScheduling.saveCustomValuesSettings.useMutation();
 
@@ -74,6 +79,17 @@ export default function RequestScheduling() {
     }
   }, [initialRequestScheduling, followUpLimit]);
 
+  useEffect(() => {
+    if (initialRequestScheduling || followUpLimit) {
+      return;
+    }
+
+    if (settingsQuery.data) {
+      setInitialTiming(settingsQuery.data.initialTiming);
+      setFollowUpCount(settingsQuery.data.followUpCount);
+    }
+  }, [initialRequestScheduling, followUpLimit, settingsQuery.data]);
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -91,10 +107,6 @@ export default function RequestScheduling() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleTogglePause = async () => {
-    showToast("Pause/Resume is not available on this page.", true);
   };
   if (!locationId) {
     return (
@@ -227,16 +239,6 @@ export default function RequestScheduling() {
           </button>
         </div>
 
-        <section className="rs-pause-card">
-          <h2 className="rs-title">Pause Review Requests</h2>
-          <p className="rs-subtitle">Temporarily stop all review requests from being sent to your contacts.</p>
-
-          <div className="rs-info-box">
-            <p className="text-sm text-muted-foreground">
-              Pause/Resume functionality is available only when editing a specific contact. This page edits location-level custom values and does not target a single contact. To pause requests for an individual contact, open the contact record and use the pause controls there.
-            </p>
-          </div>
-        </section>
       </div>
     </div>
   );

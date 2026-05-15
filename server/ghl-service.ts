@@ -139,6 +139,17 @@ function getCustomValueMap(customValues: Record<string, unknown>[]): Map<string,
   return map;
 }
 
+export async function getLocationCustomValueMap(locationId: string): Promise<Map<string, { id: string; value: string }>> {
+  const { accessToken } = await getAccessTokenAndInstallation(locationId);
+  const response = await fetchJson<{ customValues?: Record<string, unknown>[] }>(
+    `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues`,
+    accessToken,
+    { method: "GET" }
+  );
+
+  return getCustomValueMap(response.customValues ?? []);
+}
+
 async function getAccessTokenAndInstallation(locationId: string) {
   const installation = await getInstallation(locationId);
   if (!installation) {
