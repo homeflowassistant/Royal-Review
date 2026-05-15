@@ -23,6 +23,10 @@ import {
   getValidAccessToken,
   getPipelines,
   hasOpportunityInStatus,
+  getContactById,
+  updateContactById,
+  deleteContactById,
+  syncContactReviewStatus,
   type GHLContactData,
   type GHLContactStatusFilter,
 } from "../ghl-service";
@@ -68,6 +72,22 @@ const sendTestMessageSchema = z.object({
   contactId: z.string().min(1),
   message: z.string().min(1),
   attachmentUrl: z.string().optional(),
+});
+
+const updateContactSchema = z.object({
+  locationId: z.string().min(1),
+  contactId: z.string().min(1),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  name: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  dnd: z.boolean().optional(),
+});
+
+const deleteContactSchema = z.object({
+  locationId: z.string().min(1),
+  contactId: z.string().min(1),
 });
 
 export const ghlRouter = router({
@@ -286,6 +306,52 @@ export const ghlRouter = router({
     .query(async ({ input }) => {
       const pipelines = await getPipelines(input.locationId.trim());
       return pipelines;
+    }),
+
+  /**
+   * Fetch a single contact's current details.
+   */
+  getContact: publicProcedure
+    .input(z.object({ locationId: z.string().min(1), contactId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      return getContactById(input.locationId.trim(), input.contactId.trim());
+    }),
+
+  /**
+   * Refresh and optionally sync a contact's review status.
+   */
+  refreshContactStatus: publicProcedure
+    .input(z.object({ locationId: z.string().min(1), contactId: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      return syncContactReviewStatus(input.locationId.trim(), input.contactId.trim());
+    }),
+
+  /**
+   * Update a contact directly in GHL.
+   */
+  updateContact: publicProcedure
+    .input(updateContactSchema)
+    .mutation(async ({ input }) => {
+      const updated = await updateContactById(input.locationId.trim(), input.contactId.trim(), {
+        firstName: input.firstName?.trim(),
+        lastName: input.lastName?.trim(),
+        name: input.name?.trim(),
+        email: input.email?.trim(),
+        phone: input.phone?.trim(),
+        dnd: input.dnd,
+      });
+
+      return { contact: updated };
+    }),
+
+  /**
+   * Delete a contact directly in GHL.
+   */
+  deleteContact: publicProcedure
+    .input(deleteContactSchema)
+    .mutation(async ({ input }) => {
+      await deleteContactById(input.locationId.trim(), input.contactId.trim());
+      return { success: true };
     }),
 
   /**

@@ -6,9 +6,9 @@
  *
  * Status priority:
  * 1. DND → "DND"
- * 2. Won in Review pipeline → "Clicked"
- * 3. Active workflow tag → "Follow up"
- * 4. Finished workflow tag (no active) → "Finished"
+ * 2. Finished workflow tag → "Finished"
+ * 3. Won in Review pipeline → "Clicked"
+ * 4. Active workflow tag → "Follow up"
  * 5. None of above → "" (blank/unchanged)
  */
 
@@ -131,7 +131,7 @@ export function findReviewPipelineId(pipelines: any[]): string | null {
  *
  * Priority order (corrected):
  * 1. DND → "DND" (always highest priority)
- * 2. Finished workflow tag → "Finished" (overrides everything except DND)
+ * 2. Finished workflow tag → "Finished" (overrides Clicked and Follow up)
  * 3. Won in Review pipeline → "Clicked"
  * 4. Active workflow tag → "Follow up"
  * 5. None → "" (blank)
@@ -147,7 +147,7 @@ export function calculateReviewContactStatus(params: {
   // Priority 1: DND always overrides everything
   if (isDnd) return "DND";
 
-  // Priority 2: Finished tag overrides all other statuses (Clicked, Follow up, Active)
+  // Priority 2: Finished tag overrides Clicked and Follow up
   if (hasFinishedWorkflowTag) return "Finished";
 
   // Priority 3: Won opportunity (Clicked) overrides active workflow tag

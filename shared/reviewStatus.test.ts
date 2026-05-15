@@ -185,7 +185,7 @@ describe("Tag-based Review Contact Status Calculation", () => {
       expect(status).toBe("Finished");
     });
 
-    it("Priority: Active workflow tag overrides finished workflow tag", () => {
+    it("Priority: Finished tag overrides active workflow tag", () => {
       const contact = {
         dnd: false,
         tags: [
@@ -199,7 +199,7 @@ describe("Tag-based Review Contact Status Calculation", () => {
         isWonInReviewPipeline: false,
       });
 
-      expect(status).toBe("Follow up");
+      expect(status).toBe("Finished");
     });
   });
 

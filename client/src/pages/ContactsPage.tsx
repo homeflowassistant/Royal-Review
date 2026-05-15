@@ -14,10 +14,10 @@ import {
   Link2,
   Trash2,
   Edit,
-  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -40,12 +40,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import {
-  calculateReviewContactStatus,
-  findReviewPipelineId,
-  type ReviewContactStatus,
-} from "@shared/reviewStatus";
 
 const STATUS_FILTERS = [
   { key: "stopped", label: "Stopped" },
@@ -58,6 +55,12 @@ type ContactStatus = "Follow up" | "Clicked" | "Do Not Contact" | "Finished" | "
 
 function statusStyles(status: ContactStatus) {
   switch (status) {
+    case "":
+      return {
+        label: "—",
+        icon: CircleDot,
+        className: "bg-slate-50 text-slate-500 border-slate-200",
+      };
     case "Follow up":
       return {
         label: "Follow Up",
@@ -73,7 +76,7 @@ function statusStyles(status: ContactStatus) {
     case "Do Not Contact":
     case "DND":
       return {
-        label: "Do Not Contact",
+        label: "DND",
         icon: Ban,
         className: "bg-orange-50 text-orange-700 border-orange-200",
       };
@@ -123,12 +126,19 @@ export default function ContactsPage() {
   const [activeFilters, setActiveFilters] = useState<StatusFilter[]>([]);
   const [cursorHistory, setCursorHistory] = useState<(string[] | undefined)[]>([]);
   const [enhancedContacts, setEnhancedContacts] = useState<Map<string, ContactStatus>>(new Map());
-  const [reviewPipelineId, setReviewPipelineId] = useState<string | null>(null);
 
   // Contact action states
   const [selectedContact, setSelectedContact] = useState<EnhancedContact | null>(null);
-  const [actionType, setActionType] = useState<"view" | "edit" | "delete" | "add" | null>(null);
+  const [actionType, setActionType] = useState<"view" | "edit" | "delete" | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    firstName: "",
+    lastName: "",
+    name: "",
+    email: "",
+    phone: "",
+    dnd: false,
+  });
 
   const currentCursor = cursorHistory[cursorHistory.length - 1];
 
@@ -136,23 +146,6 @@ export default function ContactsPage() {
     { locationId },
     { enabled: !!locationId, refetchInterval: 60000 }
   );
-
-  // Fetch pipelines to find Review pipeline ID
-  const pipelinesQuery = trpc.ghl.getPipelines.useQuery(
-    { locationId },
-    {
-      enabled: !!locationId && connectionQuery.data?.connected === true,
-      refetchOnWindowFocus: false,
-    }
-  );
-
-  // Update reviewPipelineId when pipelines are fetched
-  useEffect(() => {
-    if (pipelinesQuery.data) {
-      const reviewId = findReviewPipelineId(pipelinesQuery.data);
-      setReviewPipelineId(reviewId);
-    }
-  }, [pipelinesQuery.data]);
 
   const contactsQuery = trpc.ghl.listContacts.useQuery(
     {
@@ -169,77 +162,43 @@ export default function ContactsPage() {
     }
   );
 
-  // Query for checking won opportunities (needs to be called per contact)
-  const wonOpportunityQuery = trpc.ghl.hasWonOpportunity.useQuery(
-    {
-      locationId,
-      contactId: "",
-      pipelineId: reviewPipelineId || "",
-    },
-    {
-      enabled: false, // We'll call this manually for each contact
-    }
-  );
+  const refreshContactStatusMutation = trpc.ghl.refreshContactStatus.useMutation();
+  const updateContactMutation = trpc.ghl.updateContact.useMutation();
+  const deleteContactMutation = trpc.ghl.deleteContact.useMutation();
 
   // Enhance contacts with opportunity-based status
   useEffect(() => {
     const enhanceContacts = async () => {
-      if (!contactsQuery.data?.contacts || !reviewPipelineId) return;
+      if (!contactsQuery.data?.contacts?.length) return;
 
       const enhanced = new Map<string, ContactStatus>();
 
-      for (const contact of contactsQuery.data.contacts) {
-        try {
-          // Fetch won opportunity status for this contact
-          const response = await fetch("/api/trpc/ghl.hasWonOpportunity", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              input: {
-                locationId,
-                contactId: contact.id,
-                pipelineId: reviewPipelineId,
-              },
-            }),
-          });
+      await Promise.all(
+        contactsQuery.data.contacts.map(async (contact) => {
+          try {
+            const result = await refreshContactStatusMutation.mutateAsync({
+              locationId,
+              contactId: contact.id,
+            });
 
-          let hasWon = false;
-          if (response.ok) {
-            const data = (await response.json()) as any;
-            hasWon = data.result?.data?.hasWon ?? false;
+            const displayStatus = result.status || (contact.smsStatus as ContactStatus) || "";
+            enhanced.set(contact.id, displayStatus as ContactStatus);
+          } catch (error) {
+            console.error(
+              `[Contacts] Error checking won opportunities for contact ${contact.id}:`,
+              error
+            );
+            // Fall back to default status
+            enhanced.set(contact.id, contact.smsStatus as ContactStatus);
           }
-
-          // Calculate status with opportunity information
-          const contact_obj = contact as any;
-          const reviewStatus = calculateReviewContactStatus({
-            contact: contact_obj,
-            isWonInReviewPipeline: hasWon,
-          });
-
-          // Map to ContactStatus type for display
-          const displayStatus: ContactStatus =
-            reviewStatus === ""
-              ? (contact.smsStatus as ContactStatus)
-              : (reviewStatus as ContactStatus);
-
-          enhanced.set(contact.id, displayStatus);
-        } catch (error) {
-          console.error(
-            `[Contacts] Error checking won opportunities for contact ${contact.id}:`,
-            error
-          );
-          // Fall back to default status
-          enhanced.set(contact.id, contact.smsStatus as ContactStatus);
-        }
-      }
+        })
+      );
 
       setEnhancedContacts(enhanced);
     };
 
     enhanceContacts();
-  }, [contactsQuery.data?.contacts, reviewPipelineId, locationId]);
+  }, [contactsQuery.data?.contacts, locationId, refreshContactStatusMutation]);
 
   const isLoading = connectionQuery.isLoading || contactsQuery.isLoading;
   const isError = connectionQuery.isError || contactsQuery.isError;
@@ -282,9 +241,20 @@ export default function ContactsPage() {
   };
 
   // Contact action handlers
-  const handleOpenMenu = (contact: EnhancedContact, type: "view" | "edit" | "delete" | "add") => {
+  const handleOpenMenu = (contact: EnhancedContact, type: "view" | "edit" | "delete") => {
     setSelectedContact(contact);
     setActionType(type);
+    if (type === "edit") {
+      const parts = contact.name.split(" ");
+      setEditForm({
+        firstName: parts[0] ?? "",
+        lastName: parts.slice(1).join(" "),
+        name: contact.name,
+        email: contact.email,
+        phone: contact.phone,
+        dnd: contact.smsStatus === "DND" || contact.smsStatus === "Do Not Contact",
+      });
+    }
     setIsDialogOpen(true);
   };
 
@@ -292,14 +262,25 @@ export default function ContactsPage() {
     if (!selectedContact) return;
 
     try {
-      alert(
-        `Edit functionality coming soon for contact: ${selectedContact.name}\n\nYou can edit this contact in GHL directly.`
-      );
+      await updateContactMutation.mutateAsync({
+        locationId,
+        contactId: selectedContact.id,
+        firstName: editForm.firstName.trim() || undefined,
+        lastName: editForm.lastName.trim() || undefined,
+        name: editForm.name.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        dnd: editForm.dnd,
+      });
+
+      toast.success("Contact updated successfully");
+      await contactsQuery.refetch();
       setIsDialogOpen(false);
-      // Future: Implement edit modal with form
     } catch (error) {
       console.error("Error editing contact:", error);
-      alert("Failed to edit contact");
+      toast.error("Failed to edit contact", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 
@@ -307,31 +288,19 @@ export default function ContactsPage() {
     if (!selectedContact) return;
 
     try {
-      const confirmed = confirm(
-        `Are you sure you want to delete ${selectedContact.name}? This action cannot be undone.`
-      );
-      if (!confirmed) return;
+      await deleteContactMutation.mutateAsync({
+        locationId,
+        contactId: selectedContact.id,
+      });
 
-      alert(
-        `Delete functionality coming soon for contact: ${selectedContact.name}\n\nYou can delete this contact in GHL directly.`
-      );
+      toast.success("Contact deleted successfully");
+      await contactsQuery.refetch();
       setIsDialogOpen(false);
-      // Future: Implement delete via API
-      // await trpc.ghl.deleteContact.mutate({ contactId: selectedContact.id });
     } catch (error) {
       console.error("Error deleting contact:", error);
-      alert("Failed to delete contact");
-    }
-  };
-
-  const handleAddContact = async () => {
-    try {
-      alert("Add new contact functionality coming soon!\n\nFor now, use the Single Contact Form to add contacts.");
-      setIsDialogOpen(false);
-      // Future: Implement add contact form
-    } catch (error) {
-      console.error("Error adding contact:", error);
-      alert("Failed to add contact");
+      toast.error("Failed to delete contact", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 
@@ -553,13 +522,6 @@ export default function ContactsPage() {
                             <Trash2 className="h-4 w-4 mr-2" />
                             <span>Delete Contact</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleOpenMenu(contact, "add")}
-                            className="cursor-pointer"
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            <span>Add New Contact</span>
-                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -652,15 +614,72 @@ export default function ContactsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <p className="text-sm text-muted-foreground">
-                  Edit functionality is coming soon. For now, you can edit this contact directly in GoHighLevel.
-                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-name">Full Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={editForm.name}
+                    onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+                    placeholder="Contact name"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-first-name">First Name</Label>
+                    <Input
+                      id="edit-first-name"
+                      value={editForm.firstName}
+                      onChange={(event) => setEditForm((current) => ({ ...current, firstName: event.target.value }))}
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-last-name">Last Name</Label>
+                    <Input
+                      id="edit-last-name"
+                      value={editForm.lastName}
+                      onChange={(event) => setEditForm((current) => ({ ...current, lastName: event.target.value }))}
+                      placeholder="Last name"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="Email address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    value={editForm.phone}
+                    onChange={(event) => setEditForm((current) => ({ ...current, phone: event.target.value }))}
+                    placeholder="Phone number"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">DND</p>
+                    <p className="text-xs text-muted-foreground">Mark this contact as do not disturb</p>
+                  </div>
+                  <Switch
+                    checked={editForm.dnd}
+                    onCheckedChange={(checked) => setEditForm((current) => ({ ...current, dnd: checked }))}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Close
                 </Button>
-                <Button onClick={handleEditContact}>Edit in GHL</Button>
+                <Button onClick={handleEditContact} disabled={updateContactMutation.isPending}>
+                  Save Changes
+                </Button>
               </DialogFooter>
             </>
           )}
@@ -682,29 +701,8 @@ export default function ContactsPage() {
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button variant="destructive" onClick={handleDeleteContact}>
+                <Button variant="destructive" onClick={handleDeleteContact} disabled={deleteContactMutation.isPending}>
                   Delete Contact
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-
-          {actionType === "add" && (
-            <>
-              <DialogHeader>
-                <DialogTitle>Add New Contact</DialogTitle>
-                <DialogDescription>
-                  Create a new contact
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <p className="text-sm text-muted-foreground">
-                  To add a new contact, please use the Single Contact Form or CSV Upload feature in the main navigation.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button onClick={() => setIsDialogOpen(false)}>
-                  Close
                 </Button>
               </DialogFooter>
             </>

@@ -12,6 +12,13 @@ import { eq, or } from "drizzle-orm";
 import { getDb } from "./db";
 import { ghlInstallations, type GHLInstallation } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import {
+  calculateReviewContactStatus,
+  findReviewPipelineId,
+  getWorkflowTagState,
+  isContactDnd,
+  normalize,
+} from "../shared/reviewStatus";
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
@@ -196,20 +203,6 @@ function getContactWorkflows(contact: Record<string, unknown>, field: "activeWor
   return toStringArray(contact[field]);
 }
 
-function hasClickedTag(tags: string[]): boolean {
-  return tags.some((tag) => tag.toLowerCase() === "clicked");
-}
-
-function hasReviewWorkflow(workflows: string[]): boolean {
-  return workflows.some((workflow) => {
-    const normalized = workflow.toLowerCase();
-    return REVIEW_WORKFLOW_NAMES.some((name) => {
-      const lower = name.toLowerCase();
-      return normalized === lower || normalized.includes(lower);
-    });
-  });
-}
-
 function determineContactStatus(contact: Record<string, unknown>): GHLListedContact["smsStatus"] {
   // Check DND first
   const dnd = Boolean(contact.dnd);
@@ -233,14 +226,6 @@ function determineContactStatus(contact: Record<string, unknown>): GHLListedCont
     })
     .filter(Boolean);
 
-  // Check for active workflow tags (highest priority after DND)
-  const hasActiveReviewTag = normalizedTags.some(
-    (tag) =>
-      tag === "review_reactivation_active" ||
-      tag === "review_request_active"
-  );
-  if (hasActiveReviewTag) return "Follow up";
-
   // Check for finished workflow tags
   const hasFinishedReviewTag = normalizedTags.some(
     (tag) =>
@@ -253,7 +238,15 @@ function determineContactStatus(contact: Record<string, unknown>): GHLListedCont
   const hasClickedTag = normalizedTags.some((tag) => tag === "clicked");
   if (hasClickedTag) return "Clicked";
 
-  // Default to Finished
+  // Check for active workflow tags
+  const hasActiveReviewTag = normalizedTags.some(
+    (tag) =>
+      tag === "review_reactivation_active" ||
+      tag === "review_request_active"
+  );
+  if (hasActiveReviewTag) return "Follow up";
+
+  // Default to blank when there is no matching status
   return "Finished";
 }
 
@@ -1229,6 +1222,162 @@ export async function createContact(
   }
 
   return response.json() as Promise<GHLCreateContactResponse>;
+}
+
+export async function getContactById(
+  locationId: string,
+  contactId: string
+): Promise<Record<string, unknown>> {
+  const accessToken = await getValidAccessToken(locationId);
+
+  const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Failed to fetch contact: ${response.status} ${errorBody}`);
+  }
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return (body.contact && typeof body.contact === "object") ? (body.contact as Record<string, unknown>) : body;
+}
+
+export async function updateContactById(
+  locationId: string,
+  contactId: string,
+  updates: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const accessToken = await getValidAccessToken(locationId);
+  const payload = cleanObject(updates);
+
+  const attempts = ["PATCH", "PUT"] as const;
+  let lastError = "";
+
+  for (const method of attempts) {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Version: GHL_API_VERSION,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      return (body.contact && typeof body.contact === "object") ? (body.contact as Record<string, unknown>) : body;
+    }
+
+    const errorBody = await response.text();
+    lastError = `Failed to update contact (${method}): ${response.status} ${errorBody}`;
+    if (response.status !== 404 && response.status !== 405) break;
+  }
+
+  throw new Error(lastError || `Failed to update contact ${contactId}`);
+}
+
+export async function deleteContactById(locationId: string, contactId: string): Promise<void> {
+  const accessToken = await getValidAccessToken(locationId);
+
+  const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Failed to delete contact: ${response.status} ${errorBody}`);
+  }
+}
+
+function getContactCustomFieldValue(contact: Record<string, unknown>, fieldKey: string): string {
+  const customFields = Array.isArray(contact.customFields) ? contact.customFields : [];
+  const normalizedKey = normalize(fieldKey);
+
+  for (const entry of customFields) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const candidateKey = typeof record.key === "string"
+      ? record.key
+      : typeof record.fieldKey === "string"
+        ? record.fieldKey
+        : typeof record.name === "string"
+          ? record.name
+          : "";
+
+    if (normalize(candidateKey) === normalizedKey) {
+      const value = record.value ?? record.field_value ?? record.fieldValue;
+      return typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
+    }
+  }
+
+  return "";
+}
+
+function isNonEmptyReviewStatus(value: string): value is Exclude<ReviewContactStatus, ""> {
+  return value === "DND" || value === "Clicked" || value === "Follow up" || value === "Finished";
+}
+
+export async function syncContactReviewStatus(locationId: string, contactId: string): Promise<{
+  contact: Record<string, unknown>;
+  reviewPipelineId: string | null;
+  isWonInReviewPipeline: boolean;
+  status: ReviewContactStatus;
+  synced: boolean;
+}> {
+  const contact = await getContactById(locationId, contactId);
+  const pipelines = await getPipelines(locationId);
+  const reviewPipelineId = findReviewPipelineId(pipelines);
+
+  let isWonInReviewPipeline = false;
+  if (reviewPipelineId) {
+    try {
+      isWonInReviewPipeline = await hasOpportunityInStatus(locationId, contactId, reviewPipelineId, "won");
+    } catch (error) {
+      console.warn(`[GHL] Failed to check won opportunity for contact ${contactId}:`, error);
+    }
+  } else {
+    console.warn(`[GHL] No Review pipeline found for location ${locationId}`);
+  }
+
+  const status = calculateReviewContactStatus({ contact, isWonInReviewPipeline });
+  const reviewStatusFieldKey = process.env.GHL_REVIEW_STATUS_FIELD_KEY?.trim() || "";
+  let synced = false;
+
+  if (reviewStatusFieldKey && isNonEmptyReviewStatus(status)) {
+    const currentValue = getContactCustomFieldValue(contact, reviewStatusFieldKey);
+    if (currentValue !== status) {
+      await updateContactById(locationId, contactId, {
+        customFields: [
+          {
+            key: reviewStatusFieldKey,
+            field_value: status,
+          },
+        ],
+      });
+      synced = true;
+    }
+  }
+
+  return {
+    contact,
+    reviewPipelineId,
+    isWonInReviewPipeline,
+    status,
+    synced,
+  };
 }
 
 /**
