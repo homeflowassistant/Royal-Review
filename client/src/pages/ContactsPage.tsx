@@ -131,6 +131,7 @@ export default function ContactsPage() {
   const [selectedContact, setSelectedContact] = useState<EnhancedContact | null>(null);
   const [actionType, setActionType] = useState<"view" | "edit" | "delete" | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [editForm, setEditForm] = useState({
     firstName: "",
     lastName: "",
@@ -271,6 +272,7 @@ export default function ContactsPage() {
     if (!selectedContact) return;
 
     try {
+      setIsRefreshing(true);
       console.log("Updating contact:", {
         locationId,
         contactId: selectedContact.id,
@@ -294,9 +296,17 @@ export default function ContactsPage() {
       });
 
       console.log("Contact updated successfully");
-      toast.success("Contact updated successfully");
+      
+      // Clear the enhanced contacts cache to force re-calculation
+      setEnhancedContacts(new Map());
+      lastStatusRefreshKeyRef.current = "";
+      
+      // Refetch the contacts list with fresh data
       await contactsQuery.refetch();
+      
+      toast.success("Contact updated successfully");
       setIsDialogOpen(false);
+      setSelectedContact(null);
     } catch (error) {
       console.error("Error editing contact:", error);
       const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
@@ -304,6 +314,8 @@ export default function ContactsPage() {
       toast.error("Failed to edit contact", {
         description: errorMessage,
       });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -311,6 +323,7 @@ export default function ContactsPage() {
     if (!selectedContact) return;
 
     try {
+      setIsRefreshing(true);
       console.log("Deleting contact:", {
         locationId,
         contactId: selectedContact.id,
@@ -322,9 +335,17 @@ export default function ContactsPage() {
       });
 
       console.log("Contact deleted successfully");
-      toast.success("Contact deleted successfully");
+      
+      // Clear the enhanced contacts cache to force re-calculation
+      setEnhancedContacts(new Map());
+      lastStatusRefreshKeyRef.current = "";
+      
+      // Refetch the contacts list with fresh data
       await contactsQuery.refetch();
+      
+      toast.success("Contact deleted successfully");
       setIsDialogOpen(false);
+      setSelectedContact(null);
     } catch (error) {
       console.error("Error deleting contact:", error);
       const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
@@ -332,6 +353,8 @@ export default function ContactsPage() {
       toast.error("Failed to delete contact", {
         description: errorMessage,
       });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -705,10 +728,11 @@ export default function ContactsPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={updateContactMutation.isPending || isRefreshing}>
                   Close
                 </Button>
-                <Button onClick={handleEditContact} disabled={updateContactMutation.isPending}>
+                <Button onClick={handleEditContact} disabled={updateContactMutation.isPending || isRefreshing} className="gap-2">
+                  {isRefreshing && <Loader2 className="h-4 w-4 animate-spin" />}
                   Save Changes
                 </Button>
               </DialogFooter>
@@ -729,10 +753,11 @@ export default function ContactsPage() {
                 </p>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={deleteContactMutation.isPending || isRefreshing}>
                   Cancel
                 </Button>
-                <Button variant="destructive" onClick={handleDeleteContact} disabled={deleteContactMutation.isPending}>
+                <Button variant="destructive" onClick={handleDeleteContact} disabled={deleteContactMutation.isPending || isRefreshing} className="gap-2">
+                  {isRefreshing && <Loader2 className="h-4 w-4 animate-spin" />}
                   Delete Contact
                 </Button>
               </DialogFooter>
