@@ -11,12 +11,9 @@
 import { eq, or } from "drizzle-orm";
 import { getDb } from "./db";
 import { ghlInstallations, type GHLInstallation } from "../drizzle/schema";
-import { ENV } from "./_core/env";
 import {
   calculateReviewContactStatus,
   findReviewPipelineId,
-  getWorkflowTagState,
-  isContactDnd,
   normalize,
 } from "../shared/reviewStatus";
 
@@ -1302,34 +1299,6 @@ export async function deleteContactById(locationId: string, contactId: string): 
   }
 }
 
-function getContactCustomFieldValue(contact: Record<string, unknown>, fieldKey: string): string {
-  const customFields = Array.isArray(contact.customFields) ? contact.customFields : [];
-  const normalizedKey = normalize(fieldKey);
-
-  for (const entry of customFields) {
-    if (!entry || typeof entry !== "object") continue;
-    const record = entry as Record<string, unknown>;
-    const candidateKey = typeof record.key === "string"
-      ? record.key
-      : typeof record.fieldKey === "string"
-        ? record.fieldKey
-        : typeof record.name === "string"
-          ? record.name
-          : "";
-
-    if (normalize(candidateKey) === normalizedKey) {
-      const value = record.value ?? record.field_value ?? record.fieldValue;
-      return typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
-    }
-  }
-
-  return "";
-}
-
-function isNonEmptyReviewStatus(value: string): value is Exclude<ReviewContactStatus, ""> {
-  return value === "DND" || value === "Clicked" || value === "Follow up" || value === "Finished";
-}
-
 export async function syncContactReviewStatus(locationId: string, contactId: string): Promise<{
   contact: Record<string, unknown>;
   reviewPipelineId: string | null;
@@ -1353,30 +1322,13 @@ export async function syncContactReviewStatus(locationId: string, contactId: str
   }
 
   const status = calculateReviewContactStatus({ contact, isWonInReviewPipeline });
-  const reviewStatusFieldKey = process.env.GHL_REVIEW_STATUS_FIELD_KEY?.trim() || "";
-  let synced = false;
-
-  if (reviewStatusFieldKey && isNonEmptyReviewStatus(status)) {
-    const currentValue = getContactCustomFieldValue(contact, reviewStatusFieldKey);
-    if (currentValue !== status) {
-      await updateContactById(locationId, contactId, {
-        customFields: [
-          {
-            key: reviewStatusFieldKey,
-            field_value: status,
-          },
-        ],
-      });
-      synced = true;
-    }
-  }
 
   return {
     contact,
     reviewPipelineId,
     isWonInReviewPipeline,
     status,
-    synced,
+    synced: false,
   };
 }
 
