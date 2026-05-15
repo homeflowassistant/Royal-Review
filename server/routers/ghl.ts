@@ -82,6 +82,21 @@ const updateContactSchema = z.object({
   name: z.string().optional(),
   email: z.string().optional(),
   phone: z.string().optional(),
+  address1: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  postalCode: z.string().optional(),
+  website: z.string().optional(),
+  source: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  customFields: z
+    .array(
+      z.object({
+        key: z.string(),
+        field_value: z.any().optional(),
+      })
+    )
+    .optional(),
   dnd: z.boolean().optional(),
 });
 
@@ -332,16 +347,35 @@ export const ghlRouter = router({
   updateContact: publicProcedure
     .input(updateContactSchema)
     .mutation(async ({ input }) => {
-      const updated = await updateContactById(input.locationId.trim(), input.contactId.trim(), {
-        firstName: input.firstName?.trim(),
-        lastName: input.lastName?.trim(),
-        name: input.name?.trim(),
-        email: input.email?.trim(),
-        phone: input.phone?.trim(),
-        dnd: input.dnd,
+      console.log("[tRPC] updateContact called with:", {
+        locationId: input.locationId,
+        contactId: input.contactId,
       });
 
-      return { contact: updated };
+      try {
+        const updated = await updateContactById(input.locationId.trim(), input.contactId.trim(), {
+          firstName: input.firstName?.trim(),
+          lastName: input.lastName?.trim(),
+          name: input.name?.trim(),
+          email: input.email?.trim(),
+          phone: input.phone?.trim(),
+          address1: input.address1?.trim(),
+          city: input.city?.trim(),
+          state: input.state?.trim(),
+          postalCode: input.postalCode?.trim(),
+          website: input.website?.trim(),
+          source: input.source?.trim(),
+          tags: input.tags,
+          customFields: input.customFields,
+          dnd: input.dnd,
+        });
+
+        console.log("[tRPC] updateContact succeeded");
+        return { contact: updated };
+      } catch (error) {
+        console.error("[tRPC] updateContact failed:", error);
+        throw error;
+      }
     }),
 
   /**
@@ -350,8 +384,19 @@ export const ghlRouter = router({
   deleteContact: publicProcedure
     .input(deleteContactSchema)
     .mutation(async ({ input }) => {
-      await deleteContactById(input.locationId.trim(), input.contactId.trim());
-      return { success: true };
+      console.log("[tRPC] deleteContact called with:", {
+        locationId: input.locationId,
+        contactId: input.contactId,
+      });
+
+      try {
+        await deleteContactById(input.locationId.trim(), input.contactId.trim());
+        console.log("[tRPC] deleteContact succeeded");
+        return { success: true };
+      } catch (error) {
+        console.error("[tRPC] deleteContact failed:", error);
+        throw error;
+      }
     }),
 
   /**

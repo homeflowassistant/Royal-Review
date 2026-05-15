@@ -165,6 +165,7 @@ export default function ContactsPage() {
   const refreshContactStatusMutation = trpc.ghl.refreshContactStatus.useMutation();
   const updateContactMutation = trpc.ghl.updateContact.useMutation();
   const deleteContactMutation = trpc.ghl.deleteContact.useMutation();
+  const utils = trpc.useUtils();
 
   // Enhance contacts with opportunity-based status
   useEffect(() => {
@@ -241,20 +242,38 @@ export default function ContactsPage() {
   };
 
   // Contact action handlers
-  const handleOpenMenu = (contact: EnhancedContact, type: "view" | "edit" | "delete") => {
+  const handleOpenMenu = async (contact: EnhancedContact, type: "view" | "edit" | "delete") => {
     setSelectedContact(contact);
     setActionType(type);
+
     if (type === "edit") {
-      const parts = contact.name.split(" ");
-      setEditForm({
-        firstName: parts[0] ?? "",
-        lastName: parts.slice(1).join(" "),
-        name: contact.name,
-        email: contact.email,
-        phone: contact.phone,
-        dnd: contact.smsStatus === "DND" || contact.smsStatus === "Do Not Contact",
-      });
+      try {
+        const latestContact = await utils.ghl.getContact.fetch({
+          locationId,
+          contactId: contact.id,
+        });
+        const contactName = typeof latestContact.name === "string" ? latestContact.name : contact.name;
+        const parts = contactName.split(" ");
+        setEditForm({
+          firstName: typeof latestContact.firstName === "string" ? latestContact.firstName : parts[0] ?? "",
+          lastName:
+            typeof latestContact.lastName === "string"
+              ? latestContact.lastName
+              : parts.slice(1).join(" "),
+          name: contactName,
+          email: typeof latestContact.email === "string" ? latestContact.email : contact.email,
+          phone: typeof latestContact.phone === "string" ? latestContact.phone : contact.phone,
+          dnd: Boolean(latestContact.dnd) || contact.smsStatus === "DND" || contact.smsStatus === "Do Not Contact",
+        });
+      } catch (error) {
+        console.error("Error loading contact before edit:", error);
+        toast.error("Failed to load contact for editing", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+        return;
+      }
     }
+
     setIsDialogOpen(true);
   };
 
@@ -262,6 +281,17 @@ export default function ContactsPage() {
     if (!selectedContact) return;
 
     try {
+      console.log("Updating contact:", {
+        locationId,
+        contactId: selectedContact.id,
+        firstName: editForm.firstName.trim() || undefined,
+        lastName: editForm.lastName.trim() || undefined,
+        name: editForm.name.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        dnd: editForm.dnd,
+      });
+
       await updateContactMutation.mutateAsync({
         locationId,
         contactId: selectedContact.id,
@@ -273,13 +303,16 @@ export default function ContactsPage() {
         dnd: editForm.dnd,
       });
 
+      console.log("Contact updated successfully");
       toast.success("Contact updated successfully");
       await contactsQuery.refetch();
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Error editing contact:", error);
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      console.error("Detailed error:", errorMessage);
       toast.error("Failed to edit contact", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage,
       });
     }
   };
@@ -288,18 +321,26 @@ export default function ContactsPage() {
     if (!selectedContact) return;
 
     try {
+      console.log("Deleting contact:", {
+        locationId,
+        contactId: selectedContact.id,
+      });
+
       await deleteContactMutation.mutateAsync({
         locationId,
         contactId: selectedContact.id,
       });
 
+      console.log("Contact deleted successfully");
       toast.success("Contact deleted successfully");
       await contactsQuery.refetch();
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Error deleting contact:", error);
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      console.error("Detailed error:", errorMessage);
       toast.error("Failed to delete contact", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage,
       });
     }
   };

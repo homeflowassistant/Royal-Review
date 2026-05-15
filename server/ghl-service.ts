@@ -10,6 +10,7 @@
 
 import { eq, or } from "drizzle-orm";
 import { getDb } from "./db";
+import { ENV } from "./_core/env";
 import { ghlInstallations, type GHLInstallation } from "../drizzle/schema";
 import {
   calculateReviewContactStatus,
@@ -1250,40 +1251,51 @@ export async function updateContactById(
   contactId: string,
   updates: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
+  console.log("[GHL] updateContactById starting", { locationId, contactId });
+
   const accessToken = await getValidAccessToken(locationId);
-  const payload = cleanObject(updates);
-
-  const attempts = ["PATCH", "PUT"] as const;
-  let lastError = "";
-
-  for (const method of attempts) {
-    const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        Version: GHL_API_VERSION,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (response.ok) {
-      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      return (body.contact && typeof body.contact === "object") ? (body.contact as Record<string, unknown>) : body;
-    }
-
-    const errorBody = await response.text();
-    lastError = `Failed to update contact (${method}): ${response.status} ${errorBody}`;
-    if (response.status !== 404 && response.status !== 405) break;
+  if (!accessToken) {
+    throw new Error("Failed to get valid access token for location: " + locationId);
   }
 
-  throw new Error(lastError || `Failed to update contact ${contactId}`);
+  console.log("[GHL] Got access token, preparing payload");
+  const payload = cleanObject(updates);
+  console.log("[GHL] Payload to send:", payload);
+
+  const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  console.log("[GHL] PUT response status:", response.status);
+
+  if (response.ok) {
+    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    console.log("[GHL] Success response:", body);
+    return (body.contact && typeof body.contact === "object") ? (body.contact as Record<string, unknown>) : body;
+  }
+
+  const errorBody = await response.text();
+  const errorMessage = `Failed to update contact: ${response.status} ${errorBody}`;
+  console.error("[GHL] Error response:", errorMessage);
+  throw new Error(errorMessage);
 }
 
 export async function deleteContactById(locationId: string, contactId: string): Promise<void> {
-  const accessToken = await getValidAccessToken(locationId);
+  console.log("[GHL] deleteContactById starting", { locationId, contactId });
 
+  const accessToken = await getValidAccessToken(locationId);
+  if (!accessToken) {
+    throw new Error("Failed to get valid access token for location: " + locationId);
+  }
+
+  console.log("[GHL] Got access token, sending DELETE request");
   const response = await fetch(`${GHL_BASE_URL}/contacts/${encodeURIComponent(contactId)}`, {
     method: "DELETE",
     headers: {
@@ -1293,10 +1305,16 @@ export async function deleteContactById(locationId: string, contactId: string): 
     },
   });
 
+  console.log("[GHL] DELETE response status:", response.status);
+
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Failed to delete contact: ${response.status} ${errorBody}`);
+    const errorMessage = `Failed to delete contact: ${response.status} ${errorBody}`;
+    console.error("[GHL] Delete error:", errorMessage);
+    throw new Error(errorMessage);
   }
+
+  console.log("[GHL] Delete succeeded");
 }
 
 export async function syncContactReviewStatus(locationId: string, contactId: string): Promise<{
