@@ -29,7 +29,9 @@ function useLocationAndParams() {
 
 function sliderBackground(value: number) {
   const pct = (value / 3) * 100;
-  return `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${pct}%, hsl(var(--border)) ${pct}%, hsl(var(--border)) 100%)`;
+  const fill = "#00c853"; // green fill for slider
+  const empty = "var(--border)";
+  return `linear-gradient(to right, ${fill} 0%, ${fill} ${pct}%, ${empty} ${pct}%, ${empty} 100%)`;
 }
 
 /**
