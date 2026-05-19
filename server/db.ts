@@ -11,10 +11,11 @@ let _pool: Pool | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
+      console.log(`[Database:${ENV.databaseLabel}] Initializing Postgres pool`);
       _pool = new Pool({ connectionString: process.env.DATABASE_URL });
       _db = drizzle(_pool);
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      console.warn(`[Database:${ENV.databaseLabel}] Failed to connect:`, error);
       _db = null;
       _pool = null;
     }
@@ -29,11 +30,18 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
+    console.warn(`[Database:${ENV.databaseLabel}] Cannot upsert user: database not available`);
     return;
   }
 
   try {
+    console.log(`[Database:${ENV.databaseLabel}] Upserting user`, {
+      openId: user.openId,
+      email: user.email ?? null,
+      loginMethod: user.loginMethod ?? null,
+      role: user.role ?? (user.openId === ENV.ownerOpenId ? "admin" : "user"),
+    });
+
     const values: InsertUser = {
       openId: user.openId,
     };
@@ -82,8 +90,12 @@ export async function upsertUser(user: InsertUser): Promise<void> {
           updatedAt: new Date(),
         },
       });
+
+    console.log(`[Database:${ENV.databaseLabel}] Upsert complete`, {
+      openId: user.openId,
+    });
   } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
+    console.error(`[Database:${ENV.databaseLabel}] Failed to upsert user:`, error);
     throw error;
   }
 }
@@ -91,7 +103,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
+    console.warn(`[Database:${ENV.databaseLabel}] Cannot get user: database not available`);
     return undefined;
   }
 
