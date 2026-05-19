@@ -1,7 +1,24 @@
+function deriveDatabaseLabel(connectionString: string) {
+  if (!connectionString) {
+    return "unconfigured";
+  }
+
+  try {
+    const url = new URL(connectionString);
+    const host = url.hostname || "unknown-host";
+    const databaseName = url.pathname && url.pathname !== "/" ? url.pathname.slice(1) : "unknown-db";
+
+    return `${host}/${databaseName}`;
+  } catch {
+    return "invalid-database-url";
+  }
+}
+
 export const ENV = {
   appId: process.env.VITE_APP_ID ?? "",
   cookieSecret: process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",
+  databaseLabel: process.env.DATABASE_LABEL ?? deriveDatabaseLabel(process.env.DATABASE_URL ?? ""),
   oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
   internalApiKey: process.env.INTERNAL_API_KEY ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
