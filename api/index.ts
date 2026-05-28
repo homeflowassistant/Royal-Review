@@ -1,6 +1,6 @@
 import "dotenv/config";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createApp } from "../server/_core/app.js.js";
+import { createApp } from "../server/_core/app.js";
 
 const app = createApp({ serveClient: false });
 
