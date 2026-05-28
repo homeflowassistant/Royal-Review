@@ -11,7 +11,6 @@ import accountManagementRoutes from "../routes/accountManagement.js";
 import { registerZapierRoutes } from "../routes/zapier.js";
 import { appRouter } from "../routers.js";
 import { createContext } from "./context.js";
-import { serveStatic } from "./vite.js";
 
 // Configure multer for file uploads (memory storage for direct Buffer access)
 const upload = multer({
@@ -26,7 +25,7 @@ const upload = multer({
   },
 });
 
-export function createApp(options?: { serveClient?: boolean }): Express {
+export async function createApp(options?: { serveClient?: boolean }): Promise<Express> {
   const app = express();
 
   app.use(express.json({ limit: "50mb" }));
@@ -75,6 +74,7 @@ export function createApp(options?: { serveClient?: boolean }): Express {
   );
 
   if (options?.serveClient) {
+    const { serveStatic } = await import("./vite.js");
     serveStatic(app);
   }
 
