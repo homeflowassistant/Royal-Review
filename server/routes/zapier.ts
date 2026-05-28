@@ -102,6 +102,50 @@ function getZapierConnectionKey(req: Request): string | undefined {
   return fromBody;
 }
 
+async function handleZapierAuthTest(req: Request, res: Response): Promise<void> {
+  const remote = normalizeText(req.ip) ?? "unknown-ip";
+  if (!applyRateLimit(`auth:${remote}`, 30, 60_000)) {
+    res.status(429).json({
+      success: false,
+      message: "Too many requests. Try again shortly.",
+    });
+    return;
+  }
+
+  const connectionKey = getZapierConnectionKey(req);
+  if (!connectionKey) {
+    res.status(401).json({
+      success: false,
+      message: "Missing Zapier connection key.",
+    });
+    return;
+  }
+
+  try {
+    const account = await validateZapierConnectionKey(connectionKey);
+
+    res.json({
+      success: true,
+      account: {
+        locationId: account.locationId,
+        locationName: account.locationName,
+        companyId: account.companyId,
+      },
+      label: `${account.locationName} - ${account.locationId}`,
+    });
+  } catch (error) {
+    if (error instanceof ZapierHttpError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
+
+    sendZapierError(res, error);
+  }
+}
+
 export function registerZapierRoutes(app: Express): void {
   app.get("/api/zapier/connection", async (req: Request, res: Response) => {
     try {
@@ -182,44 +226,12 @@ export function registerZapierRoutes(app: Express): void {
     }
   });
 
+  app.get("/api/zapier/auth/test", async (req: Request, res: Response) => {
+    await handleZapierAuthTest(req, res);
+  });
+
   app.post("/api/zapier/auth/test", async (req: Request, res: Response) => {
-    const remote = normalizeText(req.ip) ?? "unknown-ip";
-    if (!applyRateLimit(`auth:${remote}`, 30, 60_000)) {
-      return res.status(429).json({
-        success: false,
-        message: "Too many requests. Try again shortly.",
-      });
-    }
-
-    const connectionKey = getZapierConnectionKey(req);
-    if (!connectionKey) {
-      return res.status(401).json({
-        success: false,
-        message: "Missing Zapier connection key.",
-      });
-    }
-
-    try {
-      const account = await validateZapierConnectionKey(connectionKey);
-
-      return res.json({
-        success: true,
-        account: {
-          locationId: account.locationId,
-          locationName: account.locationName,
-          companyId: account.companyId,
-        },
-        label: `${account.locationName} - ${account.locationId}`,
-      });
-    } catch (error) {
-      if (error instanceof ZapierHttpError) {
-        return res.status(error.statusCode).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      return sendZapierError(res, error);
-    }
+    await handleZapierAuthTest(req, res);
   });
 
   app.post("/api/zapier/contacts/upsert", async (req: Request, res: Response) => {
