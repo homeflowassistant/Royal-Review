@@ -1,4 +1,4 @@
-import { bigint, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { bigint, boolean, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 /**
  * Core user table backing auth flow.
@@ -49,3 +49,22 @@ export const ghlInstallations = pgTable("ghl_installations", {
 
 export type GHLInstallation = typeof ghlInstallations.$inferSelect;
 export type InsertGHLInstallation = typeof ghlInstallations.$inferInsert;
+
+/**
+ * Zapier connections per GHL location.
+ * Stores only hashed keys; raw keys are returned once at generation/rotation time.
+ */
+export const zapierConnections = pgTable("zapier_connections", {
+  id: serial("id").primaryKey(),
+  locationId: varchar("locationId", { length: 128 }).notNull(),
+  connectionKeyHash: varchar("connectionKeyHash", { length: 128 }).notNull().unique(),
+  connectionKeyPreview: varchar("connectionKeyPreview", { length: 16 }).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  rotatedAt: timestamp("rotatedAt"),
+  revokedAt: timestamp("revokedAt"),
+  lastUsedAt: timestamp("lastUsedAt"),
+});
+
+export type ZapierConnection = typeof zapierConnections.$inferSelect;
+export type InsertZapierConnection = typeof zapierConnections.$inferInsert;
