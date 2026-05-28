@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { storageGetSignedUrl } from "../storage";
-import { compositeName, type OverlayConfig } from "../services/imageCompositor";
-import { ENV } from "../_core/env";
+import { storageGetSignedUrl } from "../storage.js";
+import { compositeName, type OverlayConfig } from "../services/imageCompositor.js";
+import { ENV } from "../_core/env.js";
 
 function asNum(value: unknown, fallback: number, min: number, max: number): number {
   const n = Number(value);

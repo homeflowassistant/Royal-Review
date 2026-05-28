@@ -3,15 +3,15 @@ import cors from "cors";
 import multer from "multer";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import type { Express } from "express";
-import { registerOAuthRoutes } from "./oauth";
-import { registerGHLOAuthRoutes } from "../ghl-oauth";
-import { registerStorageProxy } from "./storageProxy";
-import { registerDynamicImageRenderRoute } from "../routes/dynamicImageRender";
-import accountManagementRoutes from "../routes/accountManagement";
-import { registerZapierRoutes } from "../routes/zapier";
-import { appRouter } from "../routers";
-import { createContext } from "./context";
-import { serveStatic } from "./vite";
+import { registerOAuthRoutes } from "./oauth.js";
+import { registerGHLOAuthRoutes } from "../ghl-oauth.js";
+import { registerStorageProxy } from "./storageProxy.js";
+import { registerDynamicImageRenderRoute } from "../routes/dynamicImageRender.js";
+import accountManagementRoutes from "../routes/accountManagement.js";
+import { registerZapierRoutes } from "../routes/zapier.js";
+import { appRouter } from "../routers.js";
+import { createContext } from "./context.js";
+import { serveStatic } from "./vite.js";
 
 // Configure multer for file uploads (memory storage for direct Buffer access)
 const upload = multer({

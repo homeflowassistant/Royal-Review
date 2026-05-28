@@ -1,9 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { createHmac, randomBytes } from "crypto";
-import { getDb } from "../db";
-import { ENV } from "../_core/env";
-import { ghlInstallations, zapierConnections } from "../../drizzle/schema";
-import { getValidAccessToken, upsertContactWithTag } from "../ghl-service";
+import { getDb } from "../db.js";
+import { ENV } from "../_core/env.js";
+import { ghlInstallations, zapierConnections } from "../../drizzle/schema.js";
+import { getValidAccessToken, upsertContactWithTag } from "../ghl-service.js";
 
 const INTERNAL_TRIGGER_TAG = "trigger-royal-review";
 

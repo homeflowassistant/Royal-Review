@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "../_core/trpc.js";
 import {
   getInstallation,
   getAllInstallations,
@@ -29,7 +29,7 @@ import {
   syncContactReviewStatus,
   type GHLContactData,
   type GHLContactStatusFilter,
-} from "../ghl-service";
+} from "../ghl-service.js";
 
 // Contact data schema
 const contactSchema = z.object({

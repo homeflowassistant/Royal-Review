@@ -1,10 +1,10 @@
 import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
-import { ghlRouter } from "./routers/ghl";
-import { requestSchedulingRouter } from "./routers/requestScheduling";
-import { dynamicImageRouter } from "./routers/dynamicImage";
+import { getSessionCookieOptions } from "./_core/cookies.js";
+import { systemRouter } from "./_core/systemRouter.js";
+import { publicProcedure, router } from "./_core/trpc.js";
+import { ghlRouter } from "./routers/ghl.js";
+import { requestSchedulingRouter } from "./routers/requestScheduling.js";
+import { dynamicImageRouter } from "./routers/dynamicImage.js";
 
 export const appRouter = router({
   system: systemRouter,

@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { ENV } from "./env";
+import { ENV } from "./env.js";
 import { Pool } from "pg";
 
 export function registerStorageProxy(app: Express) {

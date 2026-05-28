@@ -11,7 +11,7 @@ import type { Express, Request, Response } from "express";
 import {
   exchangeCodeForTokens,
   upsertInstallation,
-} from "./ghl-service";
+} from "./ghl-service.js";
 
 export function registerGHLOAuthRoutes(app: Express): void {
   /**

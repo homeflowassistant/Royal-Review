@@ -7,14 +7,14 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { publicProcedure, router } from "../_core/trpc";
+import { publicProcedure, router } from "../_core/trpc.js";
 import {
   compositeName,
   normalizeImageForCompose,
   MAX_UPLOAD_BYTES,
   type OverlayConfig,
-} from "../services/imageCompositor";
-import { storagePut } from "../storage";
+} from "../services/imageCompositor.js";
+import { storagePut } from "../storage.js";
 
 // Overlay config schema for tRPC validation
 const overlayConfigSchema = z.object({

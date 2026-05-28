@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
-import { getLocationCustomValueMap, upsertGhlCustomValue } from "../ghl-service";
+import { publicProcedure, router } from "../_core/trpc.js";
+import { getLocationCustomValueMap, upsertGhlCustomValue } from "../ghl-service.js";
 
 const TIMING_LABEL_TO_INDEX: Record<string, 0 | 1 | 2 | 3> = {
   "within_24h": 0,
