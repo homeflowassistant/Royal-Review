@@ -95,12 +95,26 @@ async function requireInstalledLocation(locationId: string, res: Response): Prom
   return true;
 }
 
-function getZapierConnectionKey(req: Request): string | undefined {
-  const fromHeader = getHeaderValue(req, "x-zapier-connection-key");
-  if (fromHeader) return fromHeader.trim();
+// function getZapierConnectionKey(req: Request): string | undefined {
+//   const fromHeader = getHeaderValue(req, "x-zapier-connection-key");
+//   if (fromHeader) return fromHeader.trim();
+//   const fromBody = normalizeText(req.body?.connectionKey);
+//   return fromBody;
+// }
+
+function getZapierConnectionKey(req: Request ): string | undefined {
+  const fromHeader = normalizeText(getHeaderValue(req, "x-zapier-connection-key"));
+  if (fromHeader) return fromHeader;
+
+  const fromQuery = normalizeText(req.query.connectionKey);
+  if (fromQuery) return fromQuery;
+
   const fromBody = normalizeText(req.body?.connectionKey);
-  return fromBody;
+  if (fromBody) return fromBody;
+
+  return undefined;
 }
+
 
 async function handleZapierAuthTest(req: Request, res: Response): Promise<void> {
   const remote = normalizeText(req.ip) ?? "unknown-ip";

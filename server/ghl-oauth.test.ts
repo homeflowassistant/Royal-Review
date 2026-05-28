@@ -27,7 +27,7 @@ import {
   getValidAccessToken,
   getInstallation,
   upsertInstallation,
-} from "./ghl-service";
+} from "./ghl-service.js";
 
 // We need to mock fetch globally
 const originalFetch = globalThis.fetch;

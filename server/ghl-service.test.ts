@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { appRouter } from "./routers";
-import type { TrpcContext } from "./_core/context";
+import { appRouter } from "./routers.js";
+import type { TrpcContext } from "./_core/context.js";
 
 // Mock the ghl-service module
 vi.mock("./ghl-service", () => ({
@@ -15,7 +15,7 @@ import {
   getAllInstallations,
   processContact,
   getValidAccessToken,
-} from "./ghl-service";
+} from "./ghl-service.js";
 
 const mockedGetInstallation = vi.mocked(getInstallation);
 const mockedGetAllInstallations = vi.mocked(getAllInstallations);
