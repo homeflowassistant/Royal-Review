@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getBackendUrl } from "@/lib/backend";
 
 const DEFAULT_INVITE_URL = "https://zapier.com/developer/public-invite/240507/da63c72aee602b7838b5e5b8d6d72396/";
 const LOCATION_STORAGE_KEY = "royal-review:last-zapier-location-id";
@@ -63,6 +64,10 @@ function useLocationId() {
   }, []);
 }
 
+function zapierApiUrl(path: string): string {
+  return getBackendUrl(path);
+}
+
 export default function ZapierIntegrationPage() {
   const locationId = useLocationId();
   const [copiedKey, setCopiedKey] = useState(false);
@@ -82,10 +87,13 @@ export default function ZapierIntegrationPage() {
   }, [locationId]);
 
   const loadConnection = async () => {
-    if (!locationId) return;
+    if (!locationId) {
+      toast.error("Missing locationId in the page URL.");
+      return;
+    }
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/zapier/connection?locationId=${encodeURIComponent(locationId)}`, {
+      const response = await fetch(zapierApiUrl(`/api/zapier/connection?locationId=${encodeURIComponent(locationId)}`), {
         method: "GET",
         credentials: "include",
       });
@@ -156,11 +164,14 @@ export default function ZapierIntegrationPage() {
   };
 
   const handleRotateKey = async () => {
-    if (!locationId) return;
+    if (!locationId) {
+      toast.error("Missing locationId in the page URL.");
+      return;
+    }
 
     setIsRotating(true);
     try {
-      const response = await fetch("/api/zapier/connection/rotate", {
+      const response = await fetch(zapierApiUrl("/api/zapier/connection/rotate"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -200,11 +211,14 @@ export default function ZapierIntegrationPage() {
   };
 
   const handleRevoke = async () => {
-    if (!locationId) return;
+    if (!locationId) {
+      toast.error("Missing locationId in the page URL.");
+      return;
+    }
 
     setIsRevoking(true);
     try {
-      const response = await fetch("/api/zapier/connection/revoke", {
+      const response = await fetch(zapierApiUrl("/api/zapier/connection/revoke"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
