@@ -22,6 +22,20 @@ type ZapierConnectionResponse = {
   message?: string;
 };
 
+async function readResponseBody(response: Response): Promise<{ json?: unknown; text: string }> {
+  const text = await response.text();
+
+  if (!text) {
+    return { text: "" };
+  }
+
+  try {
+    return { json: JSON.parse(text) as unknown, text };
+  } catch {
+    return { text };
+  }
+}
+
 function getZapierCliName(): string {
   return import.meta.env.VITE_ZAPIER_APP_CLI_NAME || "";
 }
@@ -75,9 +89,10 @@ export default function ZapierIntegrationPage() {
         method: "GET",
         credentials: "include",
       });
-      const data = (await response.json()) as ZapierConnectionResponse & { message?: string };
+      const body = await readResponseBody(response);
+      const data = (body.json ?? {}) as ZapierConnectionResponse & { message?: string };
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to load Zapier connection.");
+        throw new Error(data.message || body.text || "Failed to load Zapier connection.");
       }
       setConnection(data);
       setVisibleConnectionKey(data.connectionKey || "");
@@ -152,7 +167,8 @@ export default function ZapierIntegrationPage() {
         body: JSON.stringify({ locationId }),
       });
 
-      const data = (await response.json()) as {
+      const body = await readResponseBody(response);
+      const data = (body.json ?? {}) as {
         success: boolean;
         connectionKey?: string;
         connectionKeyPreview?: string;
@@ -160,7 +176,7 @@ export default function ZapierIntegrationPage() {
       };
 
       if (!response.ok || !data.success || !data.connectionKey) {
-        throw new Error(data.message || "Failed to rotate Zapier key.");
+        throw new Error(data.message || body.text || "Failed to rotate Zapier key.");
       }
 
       setVisibleConnectionKey(data.connectionKey);
@@ -194,9 +210,10 @@ export default function ZapierIntegrationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ locationId }),
       });
-      const data = (await response.json()) as { success: boolean; message?: string; zapierEnabled?: boolean };
+      const body = await readResponseBody(response);
+      const data = (body.json ?? {}) as { success: boolean; message?: string; zapierEnabled?: boolean };
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to revoke Zapier access.");
+        throw new Error(data.message || body.text || "Failed to revoke Zapier access.");
       }
 
       setVisibleConnectionKey("");

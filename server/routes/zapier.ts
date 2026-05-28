@@ -93,23 +93,23 @@ export function registerZapierRoutes(app: Express): void {
   app.get("/api/zapier/connection", async (req: Request, res: Response) => {
     if (!(await requireAuthenticatedUser(req, res))) return;
 
-    const locationId = normalizeText(req.query.locationId);
-    if (!locationId) {
-      return res.status(400).json({
-        success: false,
-        message: "locationId is required.",
-      });
-    }
-
-    const installation = await getInstallation(locationId);
-    if (!installation) {
-      return res.status(403).json({
-        success: false,
-        message: "The GHL app is not installed or active for this location.",
-      });
-    }
-
     try {
+      const locationId = normalizeText(req.query.locationId);
+      if (!locationId) {
+        return res.status(400).json({
+          success: false,
+          message: "locationId is required.",
+        });
+      }
+
+      const installation = await getInstallation(locationId);
+      if (!installation) {
+        return res.status(403).json({
+          success: false,
+          message: "The GHL app is not installed or active for this location.",
+        });
+      }
+
       const data = await createOrGetZapierConnection(locationId);
 
       return res.json({
@@ -131,23 +131,23 @@ export function registerZapierRoutes(app: Express): void {
   app.post("/api/zapier/connection/rotate", async (req: Request, res: Response) => {
     if (!(await requireAuthenticatedUser(req, res))) return;
 
-    const locationId = normalizeText(req.body?.locationId);
-    if (!locationId) {
-      return res.status(400).json({
-        success: false,
-        message: "locationId is required.",
-      });
-    }
-
-    const installation = await getInstallation(locationId);
-    if (!installation) {
-      return res.status(403).json({
-        success: false,
-        message: "The GHL app is not installed or active for this location.",
-      });
-    }
-
     try {
+      const locationId = normalizeText(req.body?.locationId);
+      if (!locationId) {
+        return res.status(400).json({
+          success: false,
+          message: "locationId is required.",
+        });
+      }
+
+      const installation = await getInstallation(locationId);
+      if (!installation) {
+        return res.status(403).json({
+          success: false,
+          message: "The GHL app is not installed or active for this location.",
+        });
+      }
+
       const rotated = await rotateZapierConnection(locationId);
       return res.json({
         success: true,
@@ -164,15 +164,23 @@ export function registerZapierRoutes(app: Express): void {
   app.post("/api/zapier/connection/revoke", async (req: Request, res: Response) => {
     if (!(await requireAuthenticatedUser(req, res))) return;
 
-    const locationId = normalizeText(req.body?.locationId);
-    if (!locationId) {
-      return res.status(400).json({
-        success: false,
-        message: "locationId is required.",
-      });
-    }
-
     try {
+      const locationId = normalizeText(req.body?.locationId);
+      if (!locationId) {
+        return res.status(400).json({
+          success: false,
+          message: "locationId is required.",
+        });
+      }
+
+      const installation = await getInstallation(locationId);
+      if (!installation) {
+        return res.status(403).json({
+          success: false,
+          message: "The GHL app is not installed or active for this location.",
+        });
+      }
+
       await revokeZapierConnection(locationId);
       return res.json({
         success: true,
