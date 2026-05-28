@@ -38,7 +38,9 @@ export async function createApp(options?: { serveClient?: boolean }): Promise<Ex
     .filter(Boolean);
 
   if (allowedOrigins.length === 0) {
-    console.warn("[CORS] No ALLOWED_ORIGINS configured; allowing all origins (development only)");
+    if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
+      console.warn("[CORS] No ALLOWED_ORIGINS configured; allowing all origins (development only)");
+    }
     app.use(
       cors({
         origin: true,
