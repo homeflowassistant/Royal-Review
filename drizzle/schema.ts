@@ -52,13 +52,14 @@ export type InsertGHLInstallation = typeof ghlInstallations.$inferInsert;
 
 /**
  * Zapier connections per GHL location.
- * Stores only hashed keys; raw keys are returned once at generation/rotation time.
+ * Stores hashed keys for validation and raw keys for user copying.
  */
 export const zapierConnections = pgTable("zapier_connections", {
   id: serial("id").primaryKey(),
   locationId: varchar("locationId", { length: 128 }).notNull(),
   connectionKeyHash: varchar("connectionKeyHash", { length: 128 }).notNull().unique(),
   connectionKeyPreview: varchar("connectionKeyPreview", { length: 16 }).notNull(),
+  connectionKeyRaw: text("connectionKeyRaw").notNull(), // Raw key for copying (stored for user convenience)
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   rotatedAt: timestamp("rotatedAt"),

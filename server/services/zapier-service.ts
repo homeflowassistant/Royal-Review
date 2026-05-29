@@ -105,7 +105,7 @@ export async function createOrGetZapierConnection(locationId: string): Promise<{
       return {
         locationId,
         created: false,
-        connectionKey: null,
+        connectionKey: row.connectionKeyRaw || null, // Return stored raw key if available
         connectionKeyPreview: row.connectionKeyPreview,
         createdAt: row.createdAt,
         lastUsedAt: row.lastUsedAt ?? null,
@@ -121,6 +121,7 @@ export async function createOrGetZapierConnection(locationId: string): Promise<{
       locationId,
       connectionKeyHash: hash,
       connectionKeyPreview: preview,
+      connectionKeyRaw: rawKey,
       active: true,
       createdAt: now,
     });
@@ -163,6 +164,7 @@ export async function rotateZapierConnection(locationId: string): Promise<{
       locationId,
       connectionKeyHash: hash,
       connectionKeyPreview: preview,
+      connectionKeyRaw: rawKey,
       active: true,
       createdAt: now,
     });
