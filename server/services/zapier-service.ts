@@ -91,48 +91,53 @@ export async function createOrGetZapierConnection(locationId: string): Promise<{
 }> {
   const db = await requireDb();
 
-  const existing = await db
-    .select()
-    .from(zapierConnections)
-    .where(and(eq(zapierConnections.locationId, locationId), eq(zapierConnections.active, true)))
-    .orderBy(desc(zapierConnections.createdAt))
-    .limit(1);
+  // Use a transaction to avoid races where multiple active keys might be created
+  const result = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(zapierConnections)
+      .where(and(eq(zapierConnections.locationId, locationId), eq(zapierConnections.active, true)))
+      .orderBy(desc(zapierConnections.createdAt))
+      .limit(1);
 
-  if (existing.length > 0) {
-    const row = existing[0];
+    if (existing.length > 0) {
+      const row = existing[0];
+      return {
+        locationId,
+        created: false,
+        connectionKey: null,
+        connectionKeyPreview: row.connectionKeyPreview,
+        createdAt: row.createdAt,
+        lastUsedAt: row.lastUsedAt ?? null,
+      };
+    }
+
+    const rawKey = generateZapierConnectionKey();
+    const hash = hashZapierConnectionKey(rawKey);
+    const preview = makePreview(rawKey);
+    const now = new Date();
+
+    await tx.insert(zapierConnections).values({
+      locationId,
+      connectionKeyHash: hash,
+      connectionKeyPreview: preview,
+      active: true,
+      createdAt: now,
+    });
+
+    console.info("[Zapier] connection key generated", { locationId });
+
     return {
       locationId,
-      created: false,
-      connectionKey: null,
-      connectionKeyPreview: row.connectionKeyPreview,
-      createdAt: row.createdAt,
-      lastUsedAt: row.lastUsedAt ?? null,
+      created: true,
+      connectionKey: rawKey,
+      connectionKeyPreview: preview,
+      createdAt: now,
+      lastUsedAt: null,
     };
-  }
-
-  const rawKey = generateZapierConnectionKey();
-  const hash = hashZapierConnectionKey(rawKey);
-  const preview = makePreview(rawKey);
-  const now = new Date();
-
-  await db.insert(zapierConnections).values({
-    locationId,
-    connectionKeyHash: hash,
-    connectionKeyPreview: preview,
-    active: true,
-    createdAt: now,
   });
 
-  console.info("[Zapier] connection key generated", { locationId });
-
-  return {
-    locationId,
-    created: true,
-    connectionKey: rawKey,
-    connectionKeyPreview: preview,
-    createdAt: now,
-    lastUsedAt: null,
-  };
+  return result;
 }
 
 export async function rotateZapierConnection(locationId: string): Promise<{
@@ -143,30 +148,35 @@ export async function rotateZapierConnection(locationId: string): Promise<{
   const db = await requireDb();
   const now = new Date();
 
-  await db
-    .update(zapierConnections)
-    .set({ active: false, rotatedAt: now })
-    .where(and(eq(zapierConnections.locationId, locationId), eq(zapierConnections.active, true)));
+  // Perform rotate inside a transaction to ensure only one active key exists per location
+  const result = await db.transaction(async (tx) => {
+    await tx
+      .update(zapierConnections)
+      .set({ active: false, rotatedAt: now })
+      .where(and(eq(zapierConnections.locationId, locationId), eq(zapierConnections.active, true)));
 
-  const rawKey = generateZapierConnectionKey();
-  const hash = hashZapierConnectionKey(rawKey);
-  const preview = makePreview(rawKey);
+    const rawKey = generateZapierConnectionKey();
+    const hash = hashZapierConnectionKey(rawKey);
+    const preview = makePreview(rawKey);
 
-  await db.insert(zapierConnections).values({
-    locationId,
-    connectionKeyHash: hash,
-    connectionKeyPreview: preview,
-    active: true,
-    createdAt: now,
+    await tx.insert(zapierConnections).values({
+      locationId,
+      connectionKeyHash: hash,
+      connectionKeyPreview: preview,
+      active: true,
+      createdAt: now,
+    });
+
+    console.info("[Zapier] connection key rotated", { locationId });
+
+    return {
+      locationId,
+      connectionKey: rawKey,
+      connectionKeyPreview: preview,
+    };
   });
 
-  console.info("[Zapier] connection key rotated", { locationId });
-
-  return {
-    locationId,
-    connectionKey: rawKey,
-    connectionKeyPreview: preview,
-  };
+  return result;
 }
 
 export async function revokeZapierConnection(locationId: string): Promise<void> {

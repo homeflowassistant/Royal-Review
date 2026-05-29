@@ -73,6 +73,8 @@ export default function ZapierIntegrationPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
+  const [showRotateConfirm, setShowRotateConfirm] = useState(false);
+  const [rotateConfirmed, setRotateConfirmed] = useState(false);
 
   useEffect(() => {
     if (locationId) {
@@ -163,7 +165,12 @@ export default function ZapierIntegrationPage() {
       toast.error("Missing locationId in the page URL.");
       return;
     }
+    // Show confirmation modal first
+    setShowRotateConfirm(true);
+  };
 
+  const performRotateKey = async () => {
+    if (!locationId) return;
     setIsRotating(true);
     try {
       const response = await fetch("/api/zapier/connection/rotate", {
@@ -202,6 +209,8 @@ export default function ZapierIntegrationPage() {
       toast.error(error instanceof Error ? error.message : "Failed to rotate key.");
     } finally {
       setIsRotating(false);
+      setShowRotateConfirm(false);
+      setRotateConfirmed(false);
     }
   };
 
@@ -380,6 +389,42 @@ export default function ZapierIntegrationPage() {
           </Card>
         </div>
       </div>
+      {showRotateConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
+            <h3 className="mb-2 text-lg font-semibold">Rotate Zapier Connection Key</h3>
+            <p className="mb-4 text-sm text-slate-600">
+              Rotating the connection key will immediately invalidate any existing Zaps that use the previous key. You will need to update any Zap that relied on the old key.
+            </p>
+
+            <div className="mb-4 flex items-start gap-3">
+              <input
+                id="rotate-confirm"
+                type="checkbox"
+                checked={rotateConfirmed}
+                onChange={(e) => setRotateConfirmed(e.target.checked)}
+                className="mt-1 h-4 w-4"
+              />
+              <label htmlFor="rotate-confirm" className="text-sm text-slate-700">
+                I understand that rotating the key will invalidate existing Zaps and I want to proceed.
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => { setShowRotateConfirm(false); setRotateConfirmed(false); }}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void performRotateKey()}
+                disabled={!rotateConfirmed || isRotating}
+              >
+                {isRotating ? "Rotating..." : "Confirm and Rotate"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
