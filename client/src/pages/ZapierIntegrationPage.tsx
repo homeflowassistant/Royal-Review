@@ -264,10 +264,10 @@ export default function ZapierIntegrationPage() {
 
             <div className="space-y-3">
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                Connect a GHL location to Zapier.
+                Connect your account to Zapier.
               </h1>
               <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
-                Generate a per-location connection key, open the private Zapier app, and keep contact upserts flowing through your existing GHL OAuth installation.
+                Generate a secure connection key, open the private Zapier app, and keep contact upserts flowing through your account connection.
               </p>
               {connection?.locationName ? (
                 <p className="text-sm text-muted-foreground">
@@ -351,27 +351,27 @@ export default function ZapierIntegrationPage() {
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-xl">How it works</CardTitle>
-              <CardDescription>Use this short flow to connect Zapier without exposing GHL tokens.</CardDescription>
+              <CardDescription>Use this short flow to connect Zapier without exposing any account credentials.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
               <div className="rounded-lg border bg-muted/40 p-4">
-                <p className="font-medium text-foreground">1. Open the Zapier invite</p>
+                <p className="font-medium text-foreground">1. Open the Zapier invite, accept the invitation, and then start creating the Zap.</p>
                 <p>Use the private invite link to open the app inside Zapier.</p>
               </div>
               <div className="rounded-lg border bg-muted/40 p-4">
-                <p className="font-medium text-foreground">2. Copy the connection key</p>
-                <p>Paste the key when Zapier asks for account credentials. The raw key stays available for later copying.</p>
+                <p className="font-medium text-foreground">2. In Zapier, select the Royal Review app in the Action step.</p>
+                <p>Choose the app action you want to use for the Zap.</p>
               </div>
               <div className="rounded-lg border bg-muted/40 p-4">
-                <p className="font-medium text-foreground">3. Send contact data</p>
-                <p>Zapier calls your backend, which validates the key and upserts contacts through your stored GHL OAuth connection.</p>
+                <p className="font-medium text-foreground">3. Connect your account by adding the connection key.</p>
+                <p>Zapier uses this connection key to access your account.</p>
               </div>
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
                 <p className="flex items-center gap-2 font-medium text-foreground">
                   <ShieldCheck className="h-4 w-4 text-emerald-600" />
                   Security model
                 </p>
-                <p>GHL tokens stay server-side. The key is hashed for validation, while the raw key is retained for user copying.</p>
+                <p>Account credentials stay server-side. The key is hashed for validation, while the raw key is retained for user copying.</p>
               </div>
             </CardContent>
           </Card>
