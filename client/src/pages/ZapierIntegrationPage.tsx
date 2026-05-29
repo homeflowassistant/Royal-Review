@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Link2, RefreshCw, ShieldCheck, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, ExternalLink, RefreshCw, ShieldCheck, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +66,6 @@ function useLocationId() {
 export default function ZapierIntegrationPage() {
   const locationId = useLocationId();
   const [copiedKey, setCopiedKey] = useState(false);
-  const [copiedLocation, setCopiedLocation] = useState(false);
   const [zapCreateUrl, setZapCreateUrl] = useState("");
   const [connection, setConnection] = useState<ZapierConnectionResponse | null>(null);
   const [visibleConnectionKey, setVisibleConnectionKey] = useState<string>("");
@@ -117,19 +116,6 @@ export default function ZapierIntegrationPage() {
     if (!zapCreateUrl) return baseInvite;
     return `${baseInvite}?next=${encodeURIComponent(zapCreateUrl)}`;
   }, [connection?.zapierInviteUrl, zapCreateUrl]);
-
-  const handleCopyLocationId = async () => {
-    if (!locationId) return;
-
-    try {
-      await navigator.clipboard.writeText(locationId);
-      setCopiedLocation(true);
-      toast.success("Location ID copied.");
-      window.setTimeout(() => setCopiedLocation(false), 1800);
-    } catch {
-      toast.error("Unable to copy Location ID.");
-    }
-  };
 
   const handleCopyConnectionKey = async () => {
     if (!visibleConnectionKey) {
@@ -254,69 +240,59 @@ export default function ZapierIntegrationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
-        <div className="grid w-full gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur-sm">
+        <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-sm font-medium">Zapier Integration</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+            {connection?.zapierEnabled ? "Connected" : "Not connected"}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-[1.08fr_0.92fr]">
           <section className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
-              <Zap className="h-3.5 w-3.5 text-amber-500" />
-              Home Flow Zapier Integration
+            <div className="inline-flex items-center gap-2 rounded-full border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+              <Zap className="h-3.5 w-3.5 text-primary" />
+              Royal Review Zapier Integration
             </div>
 
             <div className="space-y-3">
-              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-                Connect your GHL location to Zapier.
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                Connect a GHL location to Zapier.
               </h1>
-              <p className="max-w-2xl text-base leading-7 text-slate-600">
-                Generate a per-location Zapier connection key, connect your private Zapier app, and route contact upserts through this backend using your existing GHL OAuth installation.
+              <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+                Generate a per-location connection key, open the private Zapier app, and keep contact upserts flowing through your existing GHL OAuth installation.
               </p>
               {connection?.locationName ? (
-                <p className="text-sm text-slate-500">
-                  Location: <span className="font-medium text-slate-700">{connection.locationName}</span>
+                <p className="text-sm text-muted-foreground">
+                  Location: <span className="font-medium text-foreground">{connection.locationName}</span>
                 </p>
               ) : null}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Card className="border-slate-200 bg-white/90 shadow-sm">
-                <CardHeader className="space-y-2 pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Link2 className="h-4 w-4 text-blue-600" />
-                    Your Location ID
-                  </CardTitle>
-                  <CardDescription>Use this ID inside the Zapier action configuration.</CardDescription>
+              <Card className="border-border/60 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Connection key</CardTitle>
+                  <CardDescription>
+                    Copy the raw key or rotate it only when you need a fresh credential.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Input readOnly value={locationId || "Missing locationId"} className="font-mono text-sm" />
-                  <Button type="button" variant="outline" onClick={handleCopyLocationId} className="w-full gap-2" disabled={!locationId}>
-                    {copiedLocation ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    {copiedLocation ? "Copied" : "Copy Location ID"}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200 bg-white/90 shadow-sm">
-                <CardHeader className="space-y-2 pb-3">
-                  <CardTitle className="text-lg">Zapier Connection</CardTitle>
-                  <CardDescription>Per-location backend key. Zapier never receives your GHL OAuth tokens.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={connection?.zapierEnabled ? "default" : "outline"}>
-                      {connection?.zapierEnabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                    <Badge variant="secondary">Private app invite</Badge>
-                  </div>
-
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-600">Connection Key</label>
+                    <label className="text-xs font-medium text-muted-foreground">Raw key</label>
                     <Input
                       readOnly
                       value={visibleConnectionKey || connection?.connectionKeyPreview || "No active key"}
                       className="font-mono text-xs"
                     />
                   </div>
-
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" className="gap-2" onClick={handleCopyConnectionKey}>
                       {copiedKey ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -326,69 +302,81 @@ export default function ZapierIntegrationPage() {
                       <RefreshCw className={`h-4 w-4 ${isRotating ? "animate-spin" : ""}`} />
                       {isRotating ? "Rotating..." : "Rotate Key"}
                     </Button>
-                    <Button type="button" variant="destructive" className="gap-2" onClick={handleRevoke} disabled={isRevoking || !locationId}>
-                      <AlertTriangle className="h-4 w-4" />
-                      {isRevoking ? "Revoking..." : "Revoke Access"}
-                    </Button>
                   </div>
-
-                  <p className="text-xs text-slate-500">
-                    Existing Zaps stop working immediately after key rotation or revoke.
+                  <p className="text-xs text-muted-foreground">
+                    The key is stored securely in hashed form for validation, and the raw value is kept so you can copy it later.
                   </p>
                 </CardContent>
               </Card>
-            </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button type="button" onClick={handleIntegrate} className="gap-2 bg-slate-900 text-white hover:bg-slate-800" disabled={!locationId}>
-                <ExternalLink className="h-4 w-4" />
-                Integrate with Zapier
-              </Button>
-              <Button type="button" variant="outline" onClick={handleCreateZap} className="gap-2" disabled={!locationId || !zapCreateUrl}>
-                <Zap className="h-4 w-4" />
-                Create Your Zap
-              </Button>
-              <Button type="button" variant="outline" className="gap-2" disabled={isLoading || !locationId} onClick={() => void loadConnection()}>
-                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-            </div>
+              <Card className="border-border/60 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Zapier access</CardTitle>
+                  <CardDescription>
+                    Open the invite flow or jump straight into the Zap builder.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={connection?.zapierEnabled ? "default" : "outline"}>
+                      {connection?.zapierEnabled ? "Enabled" : "Disabled"}
+                    </Badge>
+                    <Badge variant="secondary">Private app invite</Badge>
+                  </div>
 
-            <p className="text-sm text-slate-500">
-              The invite button opens Zapier in a new tab. Use the generated connection key when Zapier asks to connect your account.
-            </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" onClick={handleIntegrate} className="gap-2" disabled={!locationId}>
+                      <ExternalLink className="h-4 w-4" />
+                      Open Zapier Invite
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleCreateZap} className="gap-2" disabled={!locationId || !zapCreateUrl}>
+                      <Zap className="h-4 w-4" />
+                      Create Zap
+                    </Button>
+                    <Button type="button" variant="outline" className="gap-2" disabled={isLoading || !locationId} onClick={() => void loadConnection()}>
+                      <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+
+                  <Button type="button" variant="destructive" className="gap-2" onClick={handleRevoke} disabled={isRevoking || !locationId}>
+                    <AlertTriangle className="h-4 w-4" />
+                    {isRevoking ? "Revoking..." : "Revoke Access"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </section>
 
-          <Card className="border-slate-200 bg-slate-950 text-slate-50 shadow-xl">
-            <CardHeader className="space-y-2 pb-4">
-              <CardTitle className="text-xl text-white">How it works</CardTitle>
-              <CardDescription className="text-slate-300">A simple 3-step flow for clients inside GHL.</CardDescription>
+          <Card className="border-border/60 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl">How it works</CardTitle>
+              <CardDescription>Use this short flow to connect Zapier without exposing GHL tokens.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm leading-6 text-slate-300">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="font-medium text-white">1. Accept the private app invite</p>
-                <p>Zapier grants access to your private app without any public listing requirements.</p>
+            <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="font-medium text-foreground">1. Open the Zapier invite</p>
+                <p>Use the private invite link to open the app inside Zapier.</p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="font-medium text-white">2. Generate and copy your connection key</p>
-                <p>Use this key when Zapier asks for account credentials for this private app.</p>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="font-medium text-foreground">2. Copy the connection key</p>
+                <p>Paste the key when Zapier asks for account credentials. The raw key stays available for later copying.</p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="font-medium text-white">3. Use Create/Update Contact action</p>
-                <p>Zapier calls this backend, which resolves location from the key and upserts contacts through stored GHL OAuth tokens.</p>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="font-medium text-foreground">3. Send contact data</p>
+                <p>Zapier calls your backend, which validates the key and upserts contacts through your stored GHL OAuth connection.</p>
               </div>
-              <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-4 text-amber-100">
-                <p className="font-medium text-white">Location ID already saved</p>
-                <p>{locationId || "Add ?locationId=... to this page URL inside GHL to enable the integration flow."}</p>
-              </div>
-              <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-emerald-100">
-                <p className="font-medium text-white flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Security Model</p>
-                <p>Zapier authenticates only with your generated connection key. GHL tokens stay server-side.</p>
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <p className="flex items-center gap-2 font-medium text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  Security model
+                </p>
+                <p>GHL tokens stay server-side. The key is hashed for validation, while the raw key is retained for user copying.</p>
               </div>
             </CardContent>
           </Card>
         </div>
-      </div>
+
       {showRotateConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
