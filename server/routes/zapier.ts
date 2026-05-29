@@ -102,12 +102,19 @@ async function requireInstalledLocation(locationId: string, res: Response): Prom
 //   return fromBody;
 // }
 
-function getZapierConnectionKey(req: Request ): string | undefined {
+function getZapierConnectionKey(req: Request): string | undefined {
   const fromHeader = normalizeText(getHeaderValue(req, "x-zapier-connection-key"));
   if (fromHeader) return fromHeader;
 
-  const fromQuery = normalizeText(req.query.connectionKey);
-  if (fromQuery) return fromQuery;
+  // Query params can be string | string[] | ParsedQs. Handle string arrays and single strings.
+  const q = req.query?.connectionKey as unknown;
+  if (Array.isArray(q)) {
+    const first = normalizeText(q[0]);
+    if (first) return first;
+  } else if (typeof q === "string") {
+    const qstr = normalizeText(q);
+    if (qstr) return qstr;
+  }
 
   const fromBody = normalizeText(req.body?.connectionKey);
   if (fromBody) return fromBody;
