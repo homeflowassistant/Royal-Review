@@ -84,7 +84,7 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
             },
             {
               id: followUpLimitFieldId,
-              key: "{{custom_values.service_type}}",
+              key: "service_type",
               field_value: input.followUpCount,
             },
           ],
@@ -167,7 +167,7 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
         const tags = data.contact?.tags ?? [];
 
         const delayField = customFields.find((field) => field.key === "initial_request_delay");
-        const followUpField = customFields.find((field) => field.key === "{{custom_values.service_type}}");
+        const followUpField = customFields.find((field) => field.key === "service_type");
 
         const delayValue = typeof delayField?.value === "string" ? delayField.value : "";
         const followUpValue = typeof followUpField?.value === "string" ? followUpField.value : String(followUpField?.value ?? "");
