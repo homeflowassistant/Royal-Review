@@ -35,7 +35,7 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
   followUpLimitFieldId: string;
 }> {
   const initialDelayFieldId = await getCustomFieldIdByName(locationId, "initial_request_delay");
-  const followUpLimitFieldId = await getCustomFieldIdByName(locationId, "{{custom_values.service_type}}");
+  const followUpLimitFieldId = await getCustomFieldIdByName(locationId, "service_type");
 
   if (!initialDelayFieldId) {
     throw new TRPCError({
@@ -47,7 +47,7 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
   if (!followUpLimitFieldId) {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: "Custom field '{{custom_values.service_type}}' not found in your GHL account. Please create this field in Settings > Custom Fields.",
+      message: "Custom field 'service_type' ({{custom_values.service_type}}) not found in your GHL account. Please create this field in Settings > Custom Fields.",
     });
   }
 
@@ -197,18 +197,18 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
 
         const [initialResults, followUpResults] = await Promise.all([
           upsertGhlCustomValue(locationId, "initial_request_scheduling", input.initialRequestScheduling),
-          upsertGhlCustomValue(locationId, "{{custom_values.service_type}}", input.followUpLimit),
+          upsertGhlCustomValue(locationId, "service_type", input.followUpLimit),
         ]);
 
         return {
           success: true,
           saved: {
             initial_request_scheduling: initialResults.value,
-            ["{{custom_values.service_type}}"]: followUpResults.value,
+            service_type: followUpResults.value,
           },
           results: {
             initial_request_scheduling: { action: "created_or_updated", id: initialResults.id },
-            ["{{custom_values.service_type}}"]: { action: "created_or_updated", id: followUpResults.id },
+            service_type: { action: "created_or_updated", id: followUpResults.id },
           },
         };
       }),
