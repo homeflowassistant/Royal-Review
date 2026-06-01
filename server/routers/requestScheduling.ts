@@ -57,55 +57,7 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
     followUpLimitFieldId,
   };
 }
-
-export const requestSchedulingRouter = router({
-  getSettings: publicProcedure
-    .input(
-      z.object({
-        locationId: z.string().min(1),
-        contactId: z.string().min(1),
-      })
-    )
-    .query(async ({ input }) => {
-      const accessToken = await getLocationAccessToken(input.locationId.trim());
-
-      const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(input.contactId.trim())}`, {
-        method: "GET",
-        headers: ghlHeaders(accessToken),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Failed to load request scheduling settings: ${response.status} ${errorBody}`,
-        });
-      }
-
-      const data = (await response.json()) as {
-        contact?: {
-          customFields?: Array<{ id?: string; key?: string; value?: string | number }>;
-          tags?: string[];
-        };
-      };
-
-      const customFields = data.contact?.customFields ?? [];
-      const tags = data.contact?.tags ?? [];
-
-      const delayField = customFields.find((field) => field.key === "initial_request_delay");
-      const followUpField = customFields.find((field) => field.key === "service_type");
-
-      const delayValue = typeof delayField?.value === "string" ? delayField.value : "";
-      const followUpValue = typeof followUpField?.value === "string" ? followUpField.value : String(followUpField?.value ?? "");
-
-      return {
-        initialTiming: REVERSE_TIMING_MAP[delayValue] ?? 0,
-        followUpCount: Number.parseInt(followUpValue, 10) || 3,
-        isPaused: tags.includes("Pause_Reviews"),
-      };
-    }),
-
-  saveSettings: publicProcedure
+  const saveSettingsProcedure = publicProcedure
     .input(
       z.object({
         locationId: z.string().min(1),
@@ -132,7 +84,7 @@ export const requestSchedulingRouter = router({
             },
             {
               id: followUpLimitFieldId,
-              key: "service_type",
+              key: "{{custom_values.service_type}}",
               field_value: input.followUpCount,
             },
           ],
@@ -178,5 +130,56 @@ export const requestSchedulingRouter = router({
       }
 
       return { success: true };
-    }),
-});
+    });
+
+  export const requestSchedulingRouter = router({
+    getSettings: publicProcedure
+      .input(
+        z.object({
+          locationId: z.string().min(1),
+          contactId: z.string().min(1),
+        })
+      )
+      .query(async ({ input }) => {
+        const accessToken = await getLocationAccessToken(input.locationId.trim());
+
+        const response = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(input.contactId.trim())}`, {
+          method: "GET",
+          headers: ghlHeaders(accessToken),
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Failed to load request scheduling settings: ${response.status} ${errorBody}`,
+          });
+        }
+
+        const data = (await response.json()) as {
+          contact?: {
+            customFields?: Array<{ id?: string; key?: string; value?: string | number }>;
+            tags?: string[];
+          };
+        };
+
+        const customFields = data.contact?.customFields ?? [];
+        const tags = data.contact?.tags ?? [];
+
+        const delayField = customFields.find((field) => field.key === "initial_request_delay");
+        const followUpField = customFields.find((field) => field.key === "{{custom_values.service_type}}");
+
+        const delayValue = typeof delayField?.value === "string" ? delayField.value : "";
+        const followUpValue = typeof followUpField?.value === "string" ? followUpField.value : String(followUpField?.value ?? "");
+
+        return {
+          initialTiming: REVERSE_TIMING_MAP[delayValue] ?? 0,
+          followUpCount: Number.parseInt(followUpValue, 10) || 3,
+          isPaused: tags.includes("Pause_Reviews"),
+        };
+      }),
+
+    saveSettings: saveSettingsProcedure,
+    // Backwards-compatible alias used by the client bundle and older builds
+    saveCustomValuesSettings: saveSettingsProcedure,
+  });
