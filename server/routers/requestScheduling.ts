@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { getLocationAccessToken } from "../helpers/tokenHelper";
-import { getCustomFieldIdByName } from "../ghl-service";
+import { getCustomFieldIdByName, upsertGhlCustomValue } from "../ghl-service";
 
 const TIMING_MAP = {
   0: "within_24h",
@@ -35,7 +35,7 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
   followUpLimitFieldId: string;
 }> {
   const initialDelayFieldId = await getCustomFieldIdByName(locationId, "initial_request_delay");
-  const followUpLimitFieldId = await getCustomFieldIdByName(locationId, "service_type");
+  const followUpLimitFieldId = await getCustomFieldIdByName(locationId, "{{custom_values.service_type}}");
 
   if (!initialDelayFieldId) {
     throw new TRPCError({
@@ -181,5 +181,35 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
 
     saveSettings: saveSettingsProcedure,
     // Backwards-compatible alias used by the client bundle and older builds
-    saveCustomValuesSettings: saveSettingsProcedure,
+    saveCustomValuesSettings: publicProcedure
+      .input(
+        z.object({
+          locationId: z.string().min(1),
+          initialRequestScheduling: z.enum(["Within 24 Hours", "24 Hours", "48 Hours", "1 Week"] as const),
+          followUpLimit: z.enum(["0", "1", "2", "3"] as const),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const locationId = input.locationId.trim();
+        if (!locationId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Location ID cannot be empty" });
+        }
+
+        const [initialResults, followUpResults] = await Promise.all([
+          upsertGhlCustomValue(locationId, "initial_request_scheduling", input.initialRequestScheduling),
+          upsertGhlCustomValue(locationId, "{{custom_values.service_type}}", input.followUpLimit),
+        ]);
+
+        return {
+          success: true,
+          saved: {
+            initial_request_scheduling: initialResults.value,
+            ["{{custom_values.service_type}}"]: followUpResults.value,
+          },
+          results: {
+            initial_request_scheduling: { action: "created_or_updated", id: initialResults.id },
+            ["{{custom_values.service_type}}"]: { action: "created_or_updated", id: followUpResults.id },
+          },
+        };
+      }),
   });
