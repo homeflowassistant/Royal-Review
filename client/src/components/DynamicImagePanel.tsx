@@ -185,7 +185,9 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
   const hasContactId = Boolean(contactId && contactId.trim().length > 0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewRequestIdRef = useRef(0);
   const previewMutationQuery = trpc.dynamicImage.previewComposite.useMutation();
+  const normalizeUploadMutation = trpc.dynamicImage.normalizeUpload.useMutation();
   const saveAndUpdateMutation = trpc.dynamicImage.saveAndUpdateContact.useMutation();
 
   // File to base64
@@ -236,13 +238,16 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
     setError(null);
     setFile(f);
     setResult(null);
+    setPreviewBase64(null);
+    setFileBase64(null);
 
     // Cache file base64 to avoid re-reading on save
     try {
       const b64 = await fileToBase64(f);
-      setFileBase64(b64);
-      // Immediately show preview with sample name
-      await refreshPreview(f, sampleName, b64);
+      const normalized = await normalizeUploadMutation.mutateAsync({ imageBase64: b64 });
+      setFileBase64(normalized.imageBase64);
+      // Immediately show preview with sample name using the normalized JPEG buffer
+      await refreshPreview(f, sampleName, normalized.imageBase64);
     } catch (err) {
       console.error("File read error:", err);
       setError("Failed to read file");
@@ -257,6 +262,8 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
 
       if (!currentFile) return;
 
+      const requestId = ++previewRequestIdRef.current;
+
       // Prefer cached base64 when available
       const base64 = cachedFileBase64 || fileBase64 || (await fileToBase64(currentFile));
 
@@ -266,13 +273,20 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
           imageBase64: base64,
           name: currentName,
           overlayConfig,
+          alreadyNormalized: true,
         });
-        setPreviewBase64(response.imageBase64);
+        if (requestId === previewRequestIdRef.current) {
+          setPreviewBase64(response.imageBase64);
+        }
       } catch (err) {
-        console.error("Preview error:", err);
-        toast.error("Failed to generate preview");
+        if (requestId === previewRequestIdRef.current) {
+          console.error("Preview error:", err);
+          toast.error("Failed to generate preview");
+        }
       } finally {
-        setLoading(false);
+        if (requestId === previewRequestIdRef.current) {
+          setLoading(false);
+        }
       }
     },
     [file, sampleName, overlayConfig, previewMutationQuery, fileBase64]
@@ -280,11 +294,12 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
 
   // Debounced preview update
   useEffect(() => {
+    const previewDelay = file && file.size > 500 * 1024 ? 1200 : 500;
     const timer = setTimeout(() => {
       refreshPreview();
-    }, 500);
+    }, previewDelay);
     return () => clearTimeout(timer);
-  }, [sampleName, overlayConfig, refreshPreview]);
+  }, [file, sampleName, overlayConfig, refreshPreview]);
 
   // Handle save
   const handleSave = async () => {
@@ -296,17 +311,6 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
     setSaving(true);
     setSaveProgress("Uploading image template...");
     setError(null);
-
-    // Add a timeout to prevent infinite spinning
-    let timeoutId: NodeJS.Timeout | null = null;
-    let isTimeout = false;
-    
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        isTimeout = true;
-        reject(new Error("Save operation timed out after 45 seconds. Please check your connection and try again."));
-      }, 45000); // 45 second timeout
-    });
 
     try {
       console.log("[DynamicImagePanel] Starting save...");
@@ -326,6 +330,7 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
         sampleName,
         customFieldKey: "dynamic_image_url",
         overlayConfig,
+        alreadyNormalized: true,
       };
       
       console.log("[DynamicImagePanel] Mutation input keys:", Object.keys(mutationInput));
@@ -333,11 +338,8 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
       
       try {
         console.log("[DynamicImagePanel] About to call mutateAsync...");
-        const responsePromise = saveAndUpdateMutation.mutateAsync(mutationInput);
-        console.log("[DynamicImagePanel] mutateAsync called, returned promise");
-
-        // Race between the mutation and the timeout
-        const response = await Promise.race([responsePromise, timeoutPromise]);
+        const response = await saveAndUpdateMutation.mutateAsync(mutationInput);
+        console.log("[DynamicImagePanel] mutateAsync called, returned response");
         
         console.log("[DynamicImagePanel] Got response:", response);
         setSaveProgress("Finalizing...");
@@ -356,23 +358,17 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
       console.error("[DynamicImagePanel] Save error:", err);
       console.error("[DynamicImagePanel] Error data:", err?.data);
       console.error("[DynamicImagePanel] Error message:", err?.message);
-      console.error("[DynamicImagePanel] Is timeout:", isTimeout);
       
       let message = err?.message || "Failed to save image";
       
       if (err?.data?.code === "NOT_FOUND") {
         message = err.message;
-      } else if (isTimeout) {
-        message = "Save operation timed out. Please check your internet connection and try again.";
-      } else if (err?.message?.includes("timed out")) {
-        message = "The server took too long to respond. Please try again.";
       }
       
       setError(message);
       toast.error(message);
       setSaveProgress(null);
     } finally {
-      if (timeoutId) clearTimeout(timeoutId);
       setSaving(false);
     }
   };
@@ -543,7 +539,7 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
             </p>
             <div className="w-full max-h-48 rounded relative overflow-hidden bg-black/5">
               <img
-                src={`data:image/png;base64,${previewBase64}`}
+                src={`data:image/jpeg;base64,${previewBase64}`}
                 alt="Live preview"
                 className="w-full max-h-48 object-contain"
                 draggable={false}

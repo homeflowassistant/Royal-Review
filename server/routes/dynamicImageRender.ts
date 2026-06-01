@@ -80,7 +80,7 @@ export function registerDynamicImageRenderRoute(app: Express) {
       const config = readOverlayConfig(req);
       const output = await compositeName(baseImage, name, config);
 
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "public, max-age=300");
       res.status(200).send(output);
     } catch (error) {

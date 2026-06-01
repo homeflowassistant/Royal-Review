@@ -29,6 +29,10 @@ const overlayConfigSchema = z.object({
   padding: z.number().int().min(0).max(100).optional().default(16),
 });
 
+const uploadSchema = z.object({
+  imageBase64: z.string().min(100),
+});
+
 /**
  * POST /api/trpc/dynamicImage.previewComposite
  *
@@ -39,18 +43,40 @@ const overlayConfigSchema = z.object({
  * Output: PNG binary
  */
 export const dynamicImageRouter = router({
+  normalizeUpload: publicProcedure
+    .input(uploadSchema)
+    .mutation(async ({ input }) => {
+      const imageBuffer = Buffer.from(input.imageBase64, "base64");
+
+      if (imageBuffer.length > MAX_UPLOAD_BYTES) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Image too large. Max allowed size is 3.5 MB.",
+        });
+      }
+
+      const normalizedBuffer = await normalizeImageForCompose(imageBuffer);
+
+      return {
+        success: true,
+        imageBase64: normalizedBuffer.toString("base64"),
+        mimeType: "image/jpeg",
+      };
+    }),
+
   previewComposite: publicProcedure
     .input(
       z.object({
         imageBase64: z.string().min(100), // base64-encoded image
         name: z.string().min(1).max(100),
         overlayConfig: overlayConfigSchema.optional(),
+        alreadyNormalized: z.boolean().optional().default(false),
       })
     )
     .mutation(async ({ input, ctx }) => {
       try {
-        // Decode base64 image
         const imageBuffer = Buffer.from(input.imageBase64, "base64");
+
         if (imageBuffer.length > MAX_UPLOAD_BYTES) {
           throw new TRPCError({
             code: "BAD_REQUEST",
@@ -58,11 +84,11 @@ export const dynamicImageRouter = router({
           });
         }
 
-        const normalizedBuffer = await normalizeImageForCompose(imageBuffer);
+        const sourceBuffer = input.alreadyNormalized ? imageBuffer : await normalizeImageForCompose(imageBuffer);
 
         // Composite
         const pngBuffer = await compositeName(
-          normalizedBuffer,
+          sourceBuffer,
           input.name,
           input.overlayConfig as OverlayConfig
         );
@@ -71,7 +97,7 @@ export const dynamicImageRouter = router({
         return {
           success: true,
           imageBase64: pngBuffer.toString("base64"),
-          mimeType: "image/png",
+          mimeType: "image/jpeg",
         };
       } catch (error) {
         console.error("[dynamicImage.previewComposite]", error);
@@ -102,6 +128,7 @@ export const dynamicImageRouter = router({
         sampleName: z.string().min(1).max(100),
         customFieldKey: z.string().min(1), // e.g., "dynamic_image_url"
         overlayConfig: overlayConfigSchema.optional(),
+        alreadyNormalized: z.boolean().optional().default(false),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -130,7 +157,7 @@ export const dynamicImageRouter = router({
             });
           }
 
-          const normalizedBuffer = await normalizeImageForCompose(imageBuffer);
+          const normalizedBuffer = input.alreadyNormalized ? imageBuffer : await normalizeImageForCompose(imageBuffer);
           console.log("[dynamicImage.saveAndUpdateContact] Buffer created, size:", imageBuffer.length);
           
           const compositeBuffer = await compositeName(
@@ -157,7 +184,7 @@ export const dynamicImageRouter = router({
             storagePut(
               `dynamic-images/${scopedLocationId}/preview`,
               compositeBuffer,
-              "image/png",
+              "image/jpeg",
               { stableKey: true, deleteBeforePut: true }
             ).catch(err => {
               console.error("[dynamicImage.saveAndUpdateContact] Preview upload error:", err);
