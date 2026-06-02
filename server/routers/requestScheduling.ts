@@ -4,6 +4,8 @@ import { publicProcedure, router } from "../_core/trpc";
 import { getLocationAccessToken } from "../helpers/tokenHelper";
 import { getCustomFieldIdByName, upsertGhlCustomValue } from "../ghl-service";
 
+const FOLLOW_UP_CUSTOM_VALUE_NAME = "08. How Many Times Should We Follow-Up For A Review? (0, 1, 2, or 3)";
+
 const TIMING_MAP = {
   0: "within_24h",
   1: "24h",
@@ -197,18 +199,18 @@ async function getRequestSchedulingFieldIds(locationId: string): Promise<{
 
         const [initialResults, followUpResults] = await Promise.all([
           upsertGhlCustomValue(locationId, "initial_request_scheduling", input.initialRequestScheduling),
-          upsertGhlCustomValue(locationId, "service_type", input.followUpLimit),
+          upsertGhlCustomValue(locationId, FOLLOW_UP_CUSTOM_VALUE_NAME, input.followUpLimit),
         ]);
 
         return {
           success: true,
           saved: {
             initial_request_scheduling: initialResults.value,
-            service_type: followUpResults.value,
+            [FOLLOW_UP_CUSTOM_VALUE_NAME]: followUpResults.value,
           },
           results: {
             initial_request_scheduling: { action: "created_or_updated", id: initialResults.id },
-            service_type: { action: "created_or_updated", id: followUpResults.id },
+            [FOLLOW_UP_CUSTOM_VALUE_NAME]: { action: "created_or_updated", id: followUpResults.id },
           },
         };
       }),
