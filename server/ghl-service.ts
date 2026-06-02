@@ -911,7 +911,12 @@ export async function upsertGhlCustomValue(
     ].filter(Boolean) as string[];
 
     for (const candidate of keyCandidates) {
-      if (normalizeFieldName(candidate) === normalizedTarget || candidate === name) {
+      const normalizedCandidate = normalizeFieldName(candidate);
+      const tokenStyleMatch =
+        normalizedCandidate.endsWith(`_${normalizedTarget}`) ||
+        normalizedTarget.endsWith(`_${normalizedCandidate}`);
+
+      if (normalizedCandidate === normalizedTarget || candidate === name || tokenStyleMatch) {
         existingId = typeof customValue.id === "string" ? customValue.id : undefined;
         break;
       }
