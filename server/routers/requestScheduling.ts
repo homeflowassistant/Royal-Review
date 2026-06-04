@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
-import { getLocationAccessToken } from "../helpers/tokenHelper";
-import { getCustomFieldIdByName, upsertGhlCustomValue } from "../ghl-service";
+import { publicProcedure, router } from "../_core/trpc.js";
+import { getLocationAccessToken } from "../helpers/tokenHelper.js";
+import { getCustomFieldIdByName, upsertGhlCustomValue } from "../ghl-service.js";
 
 const FOLLOW_UP_CUSTOM_VALUE_NAME = "08. How Many Times Should We Follow-Up For A Review? (0, 1, 2, or 3)";
 
