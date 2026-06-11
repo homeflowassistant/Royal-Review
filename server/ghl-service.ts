@@ -115,17 +115,26 @@ export interface GHLWorkflowSummary {
 
 const REVIEW_WORKFLOW_NAMES = ["01. Review Reactivation", "02. Review Request"];
 const MESSAGING_CUSTOM_KEYS = {
-  businessName: "business_name",
-  businessOwnerName: "business_owner_name",
-  personalizedImageBaseUrl: "text_1_image_link",
-  customMessage: "review_request_message",
-  personalizedImageEnabled: "personalized_image_enabled",
-  googleReviewLink: "google_review_link",
+  businessName: { token: "business_name", displayName: "05. Business Name For Texts & Emails (senderID)" },
+  businessOwnerName: { token: "business_owner_name", displayName: "04. Business Owner First Name For Texts & Emails" },
+  personalizedImageBaseUrl: { token: "text_1_image_link", displayName: "03. Nifty Personalized Image" },
+  customMessage: { token: "review_request_message", displayName: "Review Request Message" },
+  personalizedImageEnabled: { token: "personalized_image_enabled", displayName: "Personalized Image Enabled" },
+  googleReviewLink: { token: "google_review_link", displayName: "01. Google Review Link" },
 } as const;
 
+type MessagingCustomKey = typeof MESSAGING_CUSTOM_KEYS;
+
 function matchesCustomKey(apiKey: string, configKey: string): boolean {
-  const normalize = (value: string) => value.toLowerCase().replace(/[\s-]/g, "_");
-  return normalize(apiKey) === normalize(configKey) || normalize(apiKey) === `contact.${normalize(configKey)}` || apiKey === configKey;
+  try {
+    const a = normalizeFieldName(apiKey || "");
+    const b = normalizeFieldName(configKey || "");
+    return a === b || a === `contact.${b}` || apiKey === configKey;
+  } catch (err) {
+    // Fallback to simple compare
+    const normalize = (value: string) => value.toLowerCase().replace(/[\s-]/g, "_");
+    return normalize(apiKey) === normalize(configKey) || normalize(apiKey) === `contact.${normalize(configKey)}` || apiKey === configKey;
+  }
 }
 
 function getCustomValueMap(customValues: Record<string, unknown>[]): Map<string, { id: string; value: string }> {
@@ -541,10 +550,22 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
   const customValues = customValuesResponse.customValues ?? [];
   const customValueMap = getCustomValueMap(customValues);
 
-  const getCustomValue = (key: string) => {
-    for (const [apiKey, entry] of customValueMap.entries()) {
-      if (matchesCustomKey(apiKey, key)) return entry.value;
+  const getCustomValue = (key: { token?: string; displayName?: string } | string) => {
+    const candidates: string[] = [];
+    if (typeof key === "string") candidates.push(key);
+    else {
+      if (key.token) candidates.push(key.token);
+      if (key.displayName) candidates.push(key.displayName);
     }
+
+    for (const candidate of candidates) {
+      for (const [apiKey, entry] of customValueMap.entries()) {
+        if (matchesCustomKey(apiKey, candidate)) return entry.value;
+        // also check displayName exact match
+        if (typeof apiKey === "string" && candidate === apiKey) return entry.value;
+      }
+    }
+
     return "";
   };
 
@@ -563,6 +584,13 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
   const businessName = typeof business.name === "string" ? business.name : "";
   const businessNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessName);
   const ownerFirstNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessOwnerName);
+  // Debug: show what customValues map contains for the personalization key
+  try {
+    const discoveredPersonalizedImage = getCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl);
+    console.log("[GHL][DEBUG] discovered personalizedImageBaseUrl for location", locationId, "->", discoveredPersonalizedImage ? discoveredPersonalizedImage.slice(0,200) : "<empty>");
+  } catch (err) {
+    console.warn("[GHL][DEBUG] failed to read personalizedImageBaseUrl from custom values:", err);
+  }
 
   return {
     ownerFirstName: ownerFirstNameCustomValue || ownerFirstName,
@@ -670,12 +698,29 @@ export async function updateMessagingSettings(
   }
 
   await Promise.all([
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.customMessage, input.customMessage || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageEnabled, input.personalizedImageEnabled ? "true" : "false"),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl, input.personalizedImageBaseUrl || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName, input.businessName || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName, input.ownerFirstName || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink, input.googleReviewLink || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.customMessage.token, input.customMessage || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageEnabled.token, input.personalizedImageEnabled ? "true" : "false"),
+    // Debug: log personalized image upsert inputs and result/errors
+    (async () => {
+      try {
+        console.log("[GHL][DEBUG] upsert personalizedImageBaseUrl ->", {
+          locationId,
+          key: MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl,
+          valuePreview: String(input.personalizedImageBaseUrl).slice(0, 200),
+        });
+        // Save using the displayName so GHL shows the exact label the user expects
+        const upsertName = MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.displayName || MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.token;
+        const res = await upsertGhlCustomValue(locationId, upsertName, input.personalizedImageBaseUrl || "");
+        console.log("[GHL][DEBUG] upsert personalizedImageBaseUrl result ->", res);
+        return res;
+      } catch (err) {
+        console.error("[GHL][DEBUG] upsert personalizedImageBaseUrl error ->", err);
+        throw err;
+      }
+    })(),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName.displayName || MESSAGING_CUSTOM_KEYS.businessName.token, input.businessName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName.displayName || MESSAGING_CUSTOM_KEYS.businessOwnerName.token, input.ownerFirstName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink.displayName || MESSAGING_CUSTOM_KEYS.googleReviewLink.token, input.googleReviewLink || ""),
   ]);
 }
 
