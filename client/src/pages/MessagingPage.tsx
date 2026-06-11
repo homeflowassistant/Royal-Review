@@ -275,9 +275,7 @@ export default function MessagingPage() {
                         <p className="text-xs text-blue-600 dark:text-blue-400 break-all">{personalizedImageBaseUrl}</p>
                       </div>
                       <button
-                        onClick={() => {
-                          setPersonalizedImageBaseUrl("");
-                        }}
+                        onClick={() => setPersonalizedImageBaseUrl("")}
                         className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 underline whitespace-nowrap"
                       >
                         Clear
@@ -295,6 +293,7 @@ export default function MessagingPage() {
                   </Button>
                 </div>
               </div>
+            </div>
             <div className="flex items-center justify-between gap-3 text-sm">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={personalizedImageEnabled} onChange={(e) => setPersonalizedImageEnabled(e.target.checked)} />
