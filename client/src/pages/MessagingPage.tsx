@@ -295,16 +295,6 @@ export default function MessagingPage() {
                   </Button>
                 </div>
               </div>
-              <div className="sm:col-span-2">
-                <label className="text-sm font-medium text-foreground mb-1 block">Custom Message</label>
-                <textarea
-                  className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                  value={customMessage}
-                  onChange={(e) => setCustomMessage(e.target.value)}
-                  placeholder="Hey {{contact.first_name}}, we hope you enjoyed your experience with {{business.name}}!"
-                />
-              </div>
-            </div>
             <div className="flex items-center justify-between gap-3 text-sm">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={personalizedImageEnabled} onChange={(e) => setPersonalizedImageEnabled(e.target.checked)} />
@@ -365,6 +355,23 @@ export default function MessagingPage() {
                 Selected: {selectedContact.firstName} {selectedContact.lastName}
               </div>
             ) : null}
+
+            <div className="mt-4 rounded-xl border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Message Preview & Custom Message</h3>
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground block">Custom Message</label>
+                <textarea
+                  className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  placeholder="Hey {{contact.first_name}}, we hope you enjoyed your experience with {{business.name}}!"
+                />
+              </div>
+              <Button className="w-full gap-2" onClick={handleSendTest} disabled={!selectedContact || sendMutation.isPending}>
+                {sendMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send Test Message
+              </Button>
+            </div>
           </div>
         </section>
       </main>
