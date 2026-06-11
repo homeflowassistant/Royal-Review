@@ -97,6 +97,7 @@ export interface GHLMessagingContext {
   customMessage: string;
   personalizedImageEnabled: boolean;
   personalizedImageUrl: string;
+  googleReviewLink: string;
 }
 
 export interface GHLSearchContactsOptions {
@@ -114,9 +115,12 @@ export interface GHLWorkflowSummary {
 
 const REVIEW_WORKFLOW_NAMES = ["01. Review Reactivation", "02. Review Request"];
 const MESSAGING_CUSTOM_KEYS = {
-  personalizedImageBaseUrl: "nifty_personalized_image_url",
+  businessName: "business_name",
+  businessOwnerName: "business_owner_name",
+  personalizedImageBaseUrl: "text_1_image_link",
   customMessage: "review_request_message",
   personalizedImageEnabled: "personalized_image_enabled",
+  googleReviewLink: "google_review_link",
 } as const;
 
 function matchesCustomKey(apiKey: string, configKey: string): boolean {
@@ -557,11 +561,13 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
       : "";
 
   const businessName = typeof business.name === "string" ? business.name : "";
+  const businessNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessName);
+  const ownerFirstNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessOwnerName);
 
   return {
-    ownerFirstName,
+    ownerFirstName: ownerFirstName || ownerFirstNameCustomValue,
     ownerLastName,
-    businessName,
+    businessName: businessName || businessNameCustomValue,
     businessId: typeof business.id === "string" ? business.id : "",
     companyId: typeof location.companyId === "string" ? location.companyId : "",
     personalizedImageBaseUrl: getCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl),
@@ -570,6 +576,7 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
       const value = getCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageEnabled);
       return value === "true" || value === "1";
     })(),
+    googleReviewLink: getCustomValue(MESSAGING_CUSTOM_KEYS.googleReviewLink),
     personalizedImageUrl: "",
   };
 }
@@ -585,6 +592,7 @@ export async function updateMessagingSettings(
     customMessage: string;
     personalizedImageEnabled: boolean;
     personalizedImageBaseUrl: string;
+    googleReviewLink: string;
   }
 ): Promise<void> {
   const { accessToken } = await getAccessTokenAndInstallation(locationId);
@@ -699,6 +707,9 @@ export async function updateMessagingSettings(
     upsertCustomValue(MESSAGING_CUSTOM_KEYS.customMessage, input.customMessage || ""),
     upsertCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageEnabled, input.personalizedImageEnabled ? "true" : "false"),
     upsertCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl, input.personalizedImageBaseUrl || ""),
+    upsertCustomValue(MESSAGING_CUSTOM_KEYS.businessName, input.businessName || ""),
+    upsertCustomValue(MESSAGING_CUSTOM_KEYS.businessOwnerName, input.ownerFirstName || ""),
+    upsertCustomValue(MESSAGING_CUSTOM_KEYS.googleReviewLink, input.googleReviewLink || ""),
   ]);
 }
 

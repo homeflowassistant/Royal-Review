@@ -65,6 +65,7 @@ const messagingSettingsSchema = z.object({
   customMessage: z.string().optional().default(""),
   personalizedImageEnabled: z.boolean().optional().default(true),
   personalizedImageBaseUrl: z.string().optional().default(""),
+  googleReviewLink: z.string().optional().default(""),
 });
 
 const sendTestMessageSchema = z.object({
@@ -275,6 +276,7 @@ export const ghlRouter = router({
         customMessage: input.customMessage,
         personalizedImageEnabled: input.personalizedImageEnabled,
         personalizedImageBaseUrl: input.personalizedImageBaseUrl,
+        googleReviewLink: input.googleReviewLink.trim(),
       });
 
       return { success: true };

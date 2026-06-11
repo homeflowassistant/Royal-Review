@@ -45,6 +45,7 @@ export default function MessagingPage() {
   const [ownerFirstName, setOwnerFirstName] = useState("");
   const [ownerLastName, setOwnerLastName] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [googleReviewLink, setGoogleReviewLink] = useState("");
   const [personalizedImageBaseUrl, setPersonalizedImageBaseUrl] = useState("");
   const [customMessage, setCustomMessage] = useState("");
   const [personalizedImageEnabled, setPersonalizedImageEnabled] = useState(true);
@@ -60,6 +61,7 @@ export default function MessagingPage() {
     setOwnerFirstName(ctx.ownerFirstName || "");
     setOwnerLastName(ctx.ownerLastName || "");
     setBusinessName(ctx.businessName || "");
+    setGoogleReviewLink(ctx.googleReviewLink || "");
     setPersonalizedImageBaseUrl(ctx.personalizedImageBaseUrl || "");
     setCustomMessage(ctx.customMessage || "");
     setPersonalizedImageEnabled(ctx.personalizedImageEnabled);
@@ -88,8 +90,8 @@ export default function MessagingPage() {
         .replace(/\{\{contact\.first_name\}\}/g, selectedContact?.firstName || "Jessica")
         .replace(/\{\{business\.name\}\}/g, businessName || "Your Business")
         .replace(/\{\{owner\.first_name\}\}/g, ownerFirstName || "Owner")
-        .replace(/\{\{review_link\}\}/g, "<Review Link>")
-    : `Hey ${selectedContact?.firstName || "Jessica"}, we hope you enjoyed your experience with ${businessName || "Your Business"}! Would you mind taking a moment to leave a review? Here's the link: <Review Link>`;
+        .replace(/\{\{review_link\}\}/g, googleReviewLink || "<Review Link>")
+    : `Hey ${selectedContact?.firstName || "Jessica"}, we hope you enjoyed your experience with ${businessName || "Your Business"}! Would you mind taking a moment to leave a review? Here's the link: ${googleReviewLink || "<Review Link>"}`;
 
   const searchResults = contactQuery.data?.contacts ?? [];
 
@@ -104,6 +106,7 @@ export default function MessagingPage() {
       customMessage,
       personalizedImageEnabled,
       personalizedImageBaseUrl,
+      googleReviewLink,
     });
     await messagingContextQuery.refetch();
   };
@@ -252,6 +255,15 @@ export default function MessagingPage() {
               <div className="sm:col-span-2">
                 <label className="text-sm font-medium text-foreground mb-1 block">Business Name</label>
                 <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-foreground mb-1 block">Google Review Link</label>
+                <Input
+                  type="url"
+                  value={googleReviewLink}
+                  onChange={(e) => setGoogleReviewLink(e.target.value)}
+                  placeholder="https://g.page/..."
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-sm font-medium text-foreground mb-1 block">Personalized Image</label>
