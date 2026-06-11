@@ -565,9 +565,9 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
   const ownerFirstNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessOwnerName);
 
   return {
-    ownerFirstName: ownerFirstName || ownerFirstNameCustomValue,
+    ownerFirstName: ownerFirstNameCustomValue || ownerFirstName,
     ownerLastName,
-    businessName: businessName || businessNameCustomValue,
+    businessName: businessNameCustomValue || businessName,
     businessId: typeof business.id === "string" ? business.id : "",
     companyId: typeof location.companyId === "string" ? location.companyId : "",
     personalizedImageBaseUrl: getCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl),
@@ -600,11 +600,14 @@ export async function updateMessagingSettings(
   const context = await getMessagingContext(locationId);
   const nextBusinessId = input.businessId || context.businessId;
 
-  if (input.ownerFirstName !== context.ownerFirstName || (input.ownerLastName ?? "") !== context.ownerLastName) {
+  const ownerFirstName = input.ownerFirstName.trim();
+  const ownerLastName = input.ownerLastName?.trim() ?? "";
+
+  if ((ownerFirstName && ownerFirstName !== context.ownerFirstName) || (ownerLastName && ownerLastName !== context.ownerLastName)) {
     const locationBody: Record<string, unknown> = {
       prospectInfo: {
-        firstName: input.ownerFirstName,
-        lastName: input.ownerLastName ?? "",
+        firstName: ownerFirstName || context.ownerFirstName,
+        lastName: ownerLastName || context.ownerLastName,
       },
     };
 
@@ -629,7 +632,8 @@ export async function updateMessagingSettings(
     }
   }
 
-  if (input.businessName !== context.businessName) {
+  const businessName = input.businessName.trim();
+  if (businessName && businessName !== context.businessName) {
     if (nextBusinessId) {
       const response = await fetch(`${GHL_BASE_URL}/businesses/${encodeURIComponent(nextBusinessId)}`, {
         method: "PUT",
@@ -639,7 +643,7 @@ export async function updateMessagingSettings(
           Authorization: `Bearer ${accessToken}`,
           Version: GHL_API_VERSION,
         },
-        body: JSON.stringify({ name: input.businessName }),
+        body: JSON.stringify({ name: businessName }),
       });
 
       if (!response.ok) {
@@ -655,7 +659,7 @@ export async function updateMessagingSettings(
           Authorization: `Bearer ${accessToken}`,
           Version: GHL_API_VERSION,
         },
-        body: JSON.stringify({ name: input.businessName, locationId }),
+        body: JSON.stringify({ name: businessName, locationId }),
       });
 
       if (!response.ok) {
@@ -665,51 +669,13 @@ export async function updateMessagingSettings(
     }
   }
 
-  const customValuesResponse = await fetchJson<{ customValues?: Record<string, unknown>[] }>(
-    `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues`,
-    accessToken,
-    { method: "GET" }
-  );
-
-  const customValues = customValuesResponse.customValues ?? [];
-  const customValueByKey = getCustomValueMap(customValues);
-  const upsertCustomValue = async (name: string, value: string) => {
-    let existingId: string | undefined;
-    for (const [apiKey, entry] of customValueByKey.entries()) {
-      if (matchesCustomKey(apiKey, name)) {
-        existingId = entry.id;
-        break;
-      }
-    }
-
-    const url = existingId
-      ? `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues/${encodeURIComponent(existingId)}`
-      : `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/customValues`;
-
-    const response = await fetch(url, {
-      method: existingId ? "PUT" : "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        Version: GHL_API_VERSION,
-      },
-      body: JSON.stringify(existingId ? { name, value } : { name, value }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Failed to save custom value ${name}: ${response.status} ${errorBody}`);
-    }
-  };
-
   await Promise.all([
-    upsertCustomValue(MESSAGING_CUSTOM_KEYS.customMessage, input.customMessage || ""),
-    upsertCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageEnabled, input.personalizedImageEnabled ? "true" : "false"),
-    upsertCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl, input.personalizedImageBaseUrl || ""),
-    upsertCustomValue(MESSAGING_CUSTOM_KEYS.businessName, input.businessName || ""),
-    upsertCustomValue(MESSAGING_CUSTOM_KEYS.businessOwnerName, input.ownerFirstName || ""),
-    upsertCustomValue(MESSAGING_CUSTOM_KEYS.googleReviewLink, input.googleReviewLink || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.customMessage, input.customMessage || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageEnabled, input.personalizedImageEnabled ? "true" : "false"),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl, input.personalizedImageBaseUrl || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName, input.businessName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName, input.ownerFirstName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink, input.googleReviewLink || ""),
   ]);
 }
 
