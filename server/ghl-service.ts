@@ -16,6 +16,7 @@ import {
   calculateReviewContactStatus,
   findReviewPipelineId,
   normalize,
+  type ReviewContactStatus,
 } from "../shared/reviewStatus.js";
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
@@ -129,11 +130,17 @@ function matchesCustomKey(apiKey: string, configKey: string): boolean {
   try {
     const a = normalizeFieldName(apiKey || "");
     const b = normalizeFieldName(configKey || "");
-    return a === b || a === `contact.${b}` || apiKey === configKey;
+
+    if (a === b || a === `contact.${b}` || apiKey === configKey) {
+      return true;
+    }
+
+    return a.includes(b) || b.includes(a);
   } catch (err) {
-    // Fallback to simple compare
     const normalize = (value: string) => value.toLowerCase().replace(/[\s-]/g, "_");
-    return normalize(apiKey) === normalize(configKey) || normalize(apiKey) === `contact.${normalize(configKey)}` || apiKey === configKey;
+    const a = normalize(apiKey);
+    const b = normalize(configKey);
+    return a === b || a === `contact.${b}` || a.includes(b) || b.includes(a) || apiKey === configKey;
   }
 }
 
@@ -141,12 +148,20 @@ function getCustomValueMap(customValues: Record<string, unknown>[]): Map<string,
   const map = new Map<string, { id: string; value: string }>();
 
   for (const customValue of customValues) {
-    const key = typeof customValue.fieldKey === "string" ? customValue.fieldKey : typeof customValue.name === "string" ? customValue.name : "";
+    const keyCandidates = [
+      typeof customValue.fieldKey === "string" ? customValue.fieldKey : undefined,
+      typeof customValue.key === "string" ? customValue.key : undefined,
+      typeof customValue.name === "string" ? customValue.name : undefined,
+      typeof customValue.displayName === "string" ? customValue.displayName : undefined,
+    ].filter((value): value is string => !!value);
+
     const id = typeof customValue.id === "string" ? customValue.id : "";
     const value = typeof customValue.value === "string" ? customValue.value : "";
 
-    if (!key || !id) continue;
-    map.set(key, { id, value });
+    if (!id) continue;
+    for (const keyCandidate of keyCandidates) {
+      map.set(normalizeFieldName(keyCandidate), { id, value });
+    }
   }
 
   return map;
@@ -545,7 +560,7 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
     ),
   ]);
 
-  const location = "location" in locationResponse ? locationResponse.location ?? {} : locationResponse;
+  const location = ("location" in locationResponse ? locationResponse.location ?? {} : locationResponse) as Record<string, unknown>;
   const business = businessesResponse.businesses?.[0] ?? {};
   const customValues = customValuesResponse.customValues ?? [];
   const customValueMap = getCustomValueMap(customValues);
@@ -559,10 +574,10 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
     }
 
     for (const candidate of candidates) {
-      for (const [apiKey, entry] of customValueMap.entries()) {
+      for (const [apiKey, entry] of Array.from(customValueMap.entries())) {
         if (matchesCustomKey(apiKey, candidate)) return entry.value;
         // also check displayName exact match
-        if (typeof apiKey === "string" && candidate === apiKey) return entry.value;
+        if (candidate === apiKey) return entry.value;
       }
     }
 
@@ -626,75 +641,18 @@ export async function updateMessagingSettings(
   const { accessToken } = await getAccessTokenAndInstallation(locationId);
 
   const context = await getMessagingContext(locationId);
-  const nextBusinessId = input.businessId || context.businessId;
 
   const ownerFirstName = input.ownerFirstName.trim();
   const ownerLastName = input.ownerLastName?.trim() ?? "";
-
-  if ((ownerFirstName && ownerFirstName !== context.ownerFirstName) || (ownerLastName && ownerLastName !== context.ownerLastName)) {
-    const locationBody: Record<string, unknown> = {
-      prospectInfo: {
-        firstName: ownerFirstName || context.ownerFirstName,
-        lastName: ownerLastName || context.ownerLastName,
-      },
-    };
-
-    if (input.companyId || context.companyId) {
-      locationBody.companyId = input.companyId || context.companyId;
-    }
-
-    const response = await fetch(`${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        Version: GHL_API_VERSION,
-      },
-      body: JSON.stringify(locationBody),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Failed to update location: ${response.status} ${errorBody}`);
-    }
-  }
-
   const businessName = input.businessName.trim();
-  if (businessName && businessName !== context.businessName) {
-    if (nextBusinessId) {
-      const response = await fetch(`${GHL_BASE_URL}/businesses/${encodeURIComponent(nextBusinessId)}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          Version: GHL_API_VERSION,
-        },
-        body: JSON.stringify({ name: businessName }),
-      });
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Failed to update business: ${response.status} ${errorBody}`);
-      }
-    } else {
-      const response = await fetch(`${GHL_BASE_URL}/businesses/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          Version: GHL_API_VERSION,
-        },
-        body: JSON.stringify({ name: businessName, locationId }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Failed to create business: ${response.status} ${errorBody}`);
-      }
-    }
+  // Persist only via custom values for the messaging page. Do not update the underlying
+  // GHL location or business objects for owner/business name here.
+  // The messaging page should continue to read these values from the configured custom values.
+  if (ownerLastName && ownerLastName !== context.ownerLastName) {
+    console.debug(
+      `[GHL] ownerLastName changed for location ${locationId}, but owner last name is not stored in messaging custom values.`
+    );
   }
 
   await Promise.all([
@@ -708,9 +666,7 @@ export async function updateMessagingSettings(
           key: MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl,
           valuePreview: String(input.personalizedImageBaseUrl).slice(0, 200),
         });
-        // Save using the displayName so GHL shows the exact label the user expects
-        const upsertName = MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.displayName || MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.token;
-        const res = await upsertGhlCustomValue(locationId, upsertName, input.personalizedImageBaseUrl || "");
+        const res = await upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.token, input.personalizedImageBaseUrl || "");
         console.log("[GHL][DEBUG] upsert personalizedImageBaseUrl result ->", res);
         return res;
       } catch (err) {
@@ -718,9 +674,9 @@ export async function updateMessagingSettings(
         throw err;
       }
     })(),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName.displayName || MESSAGING_CUSTOM_KEYS.businessName.token, input.businessName || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName.displayName || MESSAGING_CUSTOM_KEYS.businessOwnerName.token, input.ownerFirstName || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink.displayName || MESSAGING_CUSTOM_KEYS.googleReviewLink.token, input.googleReviewLink || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName.token, input.businessName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName.token, input.ownerFirstName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink.token, input.googleReviewLink || ""),
   ]);
 }
 
@@ -808,7 +764,11 @@ async function fetchLocationCustomFields(
   }
 
   const data = (await response.json()) as Record<string, unknown>;
-  const fieldsArray = Array.isArray(data.customFields) ? data.customFields : data.fields ?? [];
+  const fieldsArray = Array.isArray(data.customFields)
+    ? data.customFields
+    : Array.isArray(data.fields)
+    ? data.fields
+    : [];
 
   return fieldsArray
     .filter((field): field is Record<string, unknown> => !!field && typeof field === "object")
@@ -922,23 +882,22 @@ export async function upsertGhlCustomValue(
   const data = (await getResponse.json()) as { customValues?: Record<string, unknown>[] };
   const customValues = data.customValues ?? [];
 
-  // Find existing custom value by matching name/key defensively using the same normalizer
+  // Find an existing custom value by matching token, displayName, or normalized field names.
   let existingId: string | undefined;
-  const normalizedTarget = normalizeFieldName(name);
   for (const customValue of customValues) {
     const keyCandidates = [
       typeof customValue.fieldKey === "string" ? customValue.fieldKey : undefined,
       typeof customValue.key === "string" ? customValue.key : undefined,
       typeof customValue.name === "string" ? customValue.name : undefined,
-    ].filter(Boolean) as string[];
+      typeof customValue.displayName === "string" ? customValue.displayName : undefined,
+    ].filter((candidate): candidate is string => !!candidate);
 
     for (const candidate of keyCandidates) {
-      const normalizedCandidate = normalizeFieldName(candidate);
-      const tokenStyleMatch =
-        normalizedCandidate.endsWith(`_${normalizedTarget}`) ||
-        normalizedTarget.endsWith(`_${normalizedCandidate}`);
-
-      if (normalizedCandidate === normalizedTarget || candidate === name || tokenStyleMatch) {
+      if (
+        candidate === name ||
+        matchesCustomKey(candidate, name) ||
+        matchesCustomKey(name, candidate)
+      ) {
         existingId = typeof customValue.id === "string" ? customValue.id : undefined;
         break;
       }
@@ -982,7 +941,10 @@ export async function upsertGhlCustomValue(
   }
 
   const upsertData = (await upsertResponse.json()) as Record<string, unknown>;
-  const customValue = upsertData.customValue ?? upsertData;
+  const customValue: Record<string, unknown> =
+    typeof upsertData.customValue === "object" && upsertData.customValue !== null
+      ? (upsertData.customValue as Record<string, unknown>)
+      : upsertData;
 
   if (!customValue) {
     const available = customValues.map((v) => (typeof v.name === "string" ? v.name : typeof v.key === "string" ? v.key : "<unknown>")).slice(0,50).join(", ");
