@@ -922,6 +922,8 @@ export async function upsertGhlCustomValue(
     name in CUSTOM_VALUE_NAME_ALIASES ? CUSTOM_VALUE_NAME_ALIASES[name] : [];
   const searchNames = [name, ...aliasCandidates];
 
+  // Two-pass matching to avoid accidental substring matches (e.g. "owner_first_name")
+  // First pass: strict/normalized equality and exact alias matches
   for (const customValue of customValues) {
     const keyCandidates = [
       typeof customValue.fieldKey === "string" ? customValue.fieldKey : undefined,
@@ -931,10 +933,25 @@ export async function upsertGhlCustomValue(
     ].filter((candidate): candidate is string => !!candidate);
 
     for (const candidate of keyCandidates) {
+      const candidateNorm = normalizeFieldName(candidate);
+      const nameNorm = normalizeFieldName(name);
+
+      // Exact match on raw string or normalized form
+      if (candidate === name || candidateNorm === nameNorm) {
+        existingId = typeof customValue.id === "string" ? customValue.id : undefined;
+        existingName =
+          typeof customValue.name === "string"
+            ? customValue.name
+            : typeof customValue.displayName === "string"
+            ? customValue.displayName
+            : undefined;
+        break;
+      }
+
+      // Exact alias match (raw or normalized)
       if (
-        searchNames.includes(candidate) ||
-        searchNames.some((searchName) => matchesCustomKey(candidate, searchName)) ||
-        searchNames.some((searchName) => matchesCustomKey(searchName, candidate))
+        Array.isArray(aliasCandidates) &&
+        aliasCandidates.some((alias) => alias === candidate || normalizeFieldName(alias) === candidateNorm)
       ) {
         existingId = typeof customValue.id === "string" ? customValue.id : undefined;
         existingName =
@@ -948,6 +965,37 @@ export async function upsertGhlCustomValue(
     }
 
     if (existingId) break;
+  }
+
+  // Second pass: fallback to broader matching for compatibility with older keys
+  if (!existingId) {
+    for (const customValue of customValues) {
+      const keyCandidates = [
+        typeof customValue.fieldKey === "string" ? customValue.fieldKey : undefined,
+        typeof customValue.key === "string" ? customValue.key : undefined,
+        typeof customValue.name === "string" ? customValue.name : undefined,
+        typeof customValue.displayName === "string" ? customValue.displayName : undefined,
+      ].filter((candidate): candidate is string => !!candidate);
+
+      for (const candidate of keyCandidates) {
+        if (
+          searchNames.includes(candidate) ||
+          searchNames.some((searchName) => matchesCustomKey(candidate, searchName)) ||
+          searchNames.some((searchName) => matchesCustomKey(searchName, candidate))
+        ) {
+          existingId = typeof customValue.id === "string" ? customValue.id : undefined;
+          existingName =
+            typeof customValue.name === "string"
+              ? customValue.name
+              : typeof customValue.displayName === "string"
+              ? customValue.displayName
+              : undefined;
+          break;
+        }
+      }
+
+      if (existingId) break;
+    }
   }
 
   // Determine URL and HTTP method
