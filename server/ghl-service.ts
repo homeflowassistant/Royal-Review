@@ -124,7 +124,11 @@ const MESSAGING_CUSTOM_KEYS = {
   businessOwnerName: {
     token: "business_owner_name",
     displayName: "04. Business Owner First Name For Texts & Emails",
-    aliases: ["04_business_owner_first_name_for_texts__emails"],
+    aliases: [
+      "04. Business Owner First Name For Texts & Emails",
+      "04_business_owner_first_name_for_texts_emails",
+      "04_business_owner_first_name_for_texts__emails",
+    ],
   },
   personalizedImageBaseUrl: {
     token: "03_nifty_personalized_image",
@@ -139,8 +143,14 @@ type MessagingCustomKey = typeof MESSAGING_CUSTOM_KEYS;
 
 const CUSTOM_VALUE_NAME_ALIASES: Record<string, readonly string[]> = {
   business_name: ["05_business_name_for_texts__emails_senderid"],
+  "04. Business Owner First Name For Texts & Emails": ["business_owner_name"],
+  "04_business_owner_first_name_for_texts_emails": ["business_owner_name"],
   "04_business_owner_first_name_for_texts__emails": ["business_owner_name"],
-  business_owner_name: ["04_business_owner_first_name_for_texts__emails"],
+  business_owner_name: [
+    "04. Business Owner First Name For Texts & Emails",
+    "04_business_owner_first_name_for_texts_emails",
+    "04_business_owner_first_name_for_texts__emails",
+  ],
   "03_nifty_personalized_image": [],
   review_request_message: [],
   personalized_image_enabled: [],
