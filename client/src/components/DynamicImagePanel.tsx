@@ -172,7 +172,7 @@ export default function DynamicImagePanel({ locationId, contactId, onSaveUrl, is
 
   const [overlayConfig, setOverlayConfig] = useState({
     fontSize: 72,
-    fontColor: "#ffffff",
+    fontColor: "#000000",
     fontWeight: "bold" as const,
     positionType: "center" as const,
     xPercent: 50,

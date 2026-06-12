@@ -116,15 +116,36 @@ export interface GHLWorkflowSummary {
 
 const REVIEW_WORKFLOW_NAMES = ["01. Review Reactivation", "02. Review Request"];
 const MESSAGING_CUSTOM_KEYS = {
-  businessName: { token: "business_name", displayName: "05_business_name_for_texts__emails_senderid" },
-  businessOwnerName: { token: "04_business_owner_first_name_for_texts__emails", displayName: "04. Business Owner First Name For Texts & Emails" },
-  personalizedImageBaseUrl: { token: "03_nifty_personalized_image", displayName: "03. Nifty Personalized Image" },
+  businessName: {
+    token: "business_name",
+    displayName: "05_business_name_for_texts__emails_senderid",
+    aliases: ["05_business_name_for_texts__emails_senderid"],
+  },
+  businessOwnerName: {
+    token: "business_owner_name",
+    displayName: "04. Business Owner First Name For Texts & Emails",
+    aliases: ["04_business_owner_first_name_for_texts__emails"],
+  },
+  personalizedImageBaseUrl: {
+    token: "03_nifty_personalized_image",
+    displayName: "03. Nifty Personalized Image",
+  },
   customMessage: { token: "review_request_message", displayName: "Review Request Message" },
   personalizedImageEnabled: { token: "personalized_image_enabled", displayName: "Personalized Image Enabled" },
   googleReviewLink: { token: "google_review_link", displayName: "01. Google Review Link" },
 } as const;
 
 type MessagingCustomKey = typeof MESSAGING_CUSTOM_KEYS;
+
+const CUSTOM_VALUE_NAME_ALIASES: Record<string, readonly string[]> = {
+  business_name: ["05_business_name_for_texts__emails_senderid"],
+  "04_business_owner_first_name_for_texts__emails": ["business_owner_name"],
+  business_owner_name: ["04_business_owner_first_name_for_texts__emails"],
+  "03_nifty_personalized_image": [],
+  review_request_message: [],
+  personalized_image_enabled: [],
+  google_review_link: [],
+};
 
 function matchesCustomKey(apiKey: string, configKey: string): boolean {
   try {
@@ -565,12 +586,13 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
   const customValues = customValuesResponse.customValues ?? [];
   const customValueMap = getCustomValueMap(customValues);
 
-  const getCustomValue = (key: { token?: string; displayName?: string } | string) => {
+  const getCustomValue = (key: { token?: string; displayName?: string; aliases?: readonly string[] } | string) => {
     const candidates: string[] = [];
     if (typeof key === "string") candidates.push(key);
     else {
       if (key.token) candidates.push(key.token);
       if (key.displayName) candidates.push(key.displayName);
+      if (Array.isArray(key.aliases)) candidates.push(...key.aliases);
     }
 
     for (const candidate of candidates) {
@@ -882,9 +904,13 @@ export async function upsertGhlCustomValue(
   const data = (await getResponse.json()) as { customValues?: Record<string, unknown>[] };
   const customValues = data.customValues ?? [];
 
-  // Find an existing custom value by matching token, displayName, or normalized field names.
+  // Find an existing custom value by matching token, displayName, aliases, or normalized field names.
   let existingId: string | undefined;
   let existingName: string | undefined;
+
+  const aliasCandidates =
+    name in CUSTOM_VALUE_NAME_ALIASES ? CUSTOM_VALUE_NAME_ALIASES[name] : [];
+  const searchNames = [name, ...aliasCandidates];
 
   for (const customValue of customValues) {
     const keyCandidates = [
@@ -896,9 +922,9 @@ export async function upsertGhlCustomValue(
 
     for (const candidate of keyCandidates) {
       if (
-        candidate === name ||
-        matchesCustomKey(candidate, name) ||
-        matchesCustomKey(name, candidate)
+        searchNames.includes(candidate) ||
+        searchNames.some((searchName) => matchesCustomKey(candidate, searchName)) ||
+        searchNames.some((searchName) => matchesCustomKey(searchName, candidate))
       ) {
         existingId = typeof customValue.id === "string" ? customValue.id : undefined;
         existingName =
