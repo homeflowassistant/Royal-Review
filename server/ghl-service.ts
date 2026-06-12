@@ -688,8 +688,8 @@ export async function updateMessagingSettings(
   }
 
   await Promise.all([
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.customMessage.token, input.customMessage || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageEnabled.token, input.personalizedImageEnabled ? "true" : "false"),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.customMessage.displayName, input.customMessage || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageEnabled.displayName, input.personalizedImageEnabled ? "true" : "false"),
     // Debug: log personalized image upsert inputs and result/errors
     (async () => {
       try {
@@ -698,7 +698,7 @@ export async function updateMessagingSettings(
           key: MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl,
           valuePreview: String(input.personalizedImageBaseUrl).slice(0, 200),
         });
-        const res = await upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.token, input.personalizedImageBaseUrl || "");
+        const res = await upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.personalizedImageBaseUrl.displayName, input.personalizedImageBaseUrl || "");
         console.log("[GHL][DEBUG] upsert personalizedImageBaseUrl result ->", res);
         return res;
       } catch (err) {
@@ -706,9 +706,9 @@ export async function updateMessagingSettings(
         throw err;
       }
     })(),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName.token, input.businessName || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName.token, input.ownerFirstName || ""),
-    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink.token, input.googleReviewLink || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessName.displayName, input.businessName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.businessOwnerName.displayName, input.ownerFirstName || ""),
+    upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.googleReviewLink.displayName, input.googleReviewLink || ""),
   ]);
 }
 
