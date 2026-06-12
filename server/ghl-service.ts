@@ -116,9 +116,9 @@ export interface GHLWorkflowSummary {
 
 const REVIEW_WORKFLOW_NAMES = ["01. Review Reactivation", "02. Review Request"];
 const MESSAGING_CUSTOM_KEYS = {
-  businessName: { token: "business_name", displayName: "05. Business Name For Texts & Emails (senderID)" },
-  businessOwnerName: { token: "business_owner_name", displayName: "04. Business Owner First Name For Texts & Emails" },
-  personalizedImageBaseUrl: { token: "text_1_image_link", displayName: "03. Nifty Personalized Image" },
+  businessName: { token: "business_name", displayName: "05_business_name_for_texts__emails_senderid" },
+  businessOwnerName: { token: "04_business_owner_first_name_for_texts__emails", displayName: "04. Business Owner First Name For Texts & Emails" },
+  personalizedImageBaseUrl: { token: "03_nifty_personalized_image", displayName: "03. Nifty Personalized Image" },
   customMessage: { token: "review_request_message", displayName: "Review Request Message" },
   personalizedImageEnabled: { token: "personalized_image_enabled", displayName: "Personalized Image Enabled" },
   googleReviewLink: { token: "google_review_link", displayName: "01. Google Review Link" },
@@ -884,6 +884,8 @@ export async function upsertGhlCustomValue(
 
   // Find an existing custom value by matching token, displayName, or normalized field names.
   let existingId: string | undefined;
+  let existingName: string | undefined;
+
   for (const customValue of customValues) {
     const keyCandidates = [
       typeof customValue.fieldKey === "string" ? customValue.fieldKey : undefined,
@@ -899,6 +901,12 @@ export async function upsertGhlCustomValue(
         matchesCustomKey(name, candidate)
       ) {
         existingId = typeof customValue.id === "string" ? customValue.id : undefined;
+        existingName =
+          typeof customValue.name === "string"
+            ? customValue.name
+            : typeof customValue.displayName === "string"
+            ? customValue.displayName
+            : undefined;
         break;
       }
     }
@@ -914,8 +922,9 @@ export async function upsertGhlCustomValue(
   const method = existingId ? "PUT" : "POST";
 
   // Upsert the custom value
-  // GHL API expects just name and value for custom values
-  const payload: Record<string, unknown> = { name, value };
+  // GHL API expects just name and value for custom values.
+  // When an existing custom value was found, preserve its actual name to avoid creating new keys.
+  const payload: Record<string, unknown> = { name: existingName || name, value };
 
   const upsertResponse = await fetch(url, {
     method,
