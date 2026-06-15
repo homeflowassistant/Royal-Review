@@ -58,7 +58,6 @@ const contactsQuerySchema = z.object({
 const messagingSettingsSchema = z.object({
   locationId: z.string().min(1),
   ownerFirstName: z.string().optional().default(""),
-  ownerLastName: z.string().optional().default(""),
   businessName: z.string().optional().default(""),
   businessId: z.string().optional().default(""),
   companyId: z.string().optional().default(""),
@@ -269,7 +268,6 @@ export const ghlRouter = router({
     .mutation(async ({ input }) => {
       await updateMessagingSettings(input.locationId.trim(), {
         ownerFirstName: input.ownerFirstName.trim(),
-        ownerLastName: input.ownerLastName.trim(),
         businessName: input.businessName.trim(),
         businessId: input.businessId.trim() || undefined,
         companyId: input.companyId.trim() || undefined,

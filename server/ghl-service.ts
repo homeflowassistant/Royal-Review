@@ -90,7 +90,6 @@ export interface GHLContactsPage {
 
 export interface GHLMessagingContext {
   ownerFirstName: string;
-  ownerLastName: string;
   businessName: string;
   businessId: string;
   companyId: string;
@@ -622,12 +621,6 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
       ? String(location.firstName)
       : "";
 
-  const ownerLastName = typeof (location.prospectInfo as Record<string, unknown> | undefined)?.lastName === "string"
-    ? String((location.prospectInfo as Record<string, unknown>).lastName)
-    : typeof location.lastName === "string"
-      ? String(location.lastName)
-      : "";
-
   const businessName = typeof business.name === "string" ? business.name : "";
   const businessNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessName);
   const ownerFirstNameCustomValue = getCustomValue(MESSAGING_CUSTOM_KEYS.businessOwnerName);
@@ -641,7 +634,6 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
 
   return {
     ownerFirstName: ownerFirstNameCustomValue || ownerFirstName,
-    ownerLastName,
     businessName: businessNameCustomValue || businessName,
     businessId: typeof business.id === "string" ? business.id : "",
     companyId: typeof location.companyId === "string" ? location.companyId : "",
@@ -649,6 +641,7 @@ export async function getMessagingContext(locationId: string): Promise<GHLMessag
     customMessage: getCustomValue(MESSAGING_CUSTOM_KEYS.customMessage),
     personalizedImageEnabled: (() => {
       const value = getCustomValue(MESSAGING_CUSTOM_KEYS.personalizedImageEnabled);
+      if (value === "") return true; // Default ON
       return value === "true" || value === "1";
     })(),
     googleReviewLink: getCustomValue(MESSAGING_CUSTOM_KEYS.googleReviewLink),
@@ -660,7 +653,6 @@ export async function updateMessagingSettings(
   locationId: string,
   input: {
     ownerFirstName: string;
-    ownerLastName?: string;
     businessName: string;
     businessId?: string;
     companyId?: string;
@@ -672,20 +664,8 @@ export async function updateMessagingSettings(
 ): Promise<void> {
   const { accessToken } = await getAccessTokenAndInstallation(locationId);
 
-  const context = await getMessagingContext(locationId);
-
   const ownerFirstName = input.ownerFirstName.trim();
-  const ownerLastName = input.ownerLastName?.trim() ?? "";
   const businessName = input.businessName.trim();
-
-  // Persist only via custom values for the messaging page. Do not update the underlying
-  // GHL location or business objects for owner/business name here.
-  // The messaging page should continue to read these values from the configured custom values.
-  if (ownerLastName && ownerLastName !== context.ownerLastName) {
-    console.debug(
-      `[GHL] ownerLastName changed for location ${locationId}, but owner last name is not stored in messaging custom values.`
-    );
-  }
 
   await Promise.all([
     upsertGhlCustomValue(locationId, MESSAGING_CUSTOM_KEYS.customMessage.displayName, input.customMessage || ""),

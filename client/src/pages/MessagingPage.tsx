@@ -43,7 +43,6 @@ export default function MessagingPage() {
   const messagingContextQuery = trpc.ghl.messagingContext.useQuery({ locationId }, { enabled: !!locationId && connectionQuery.data?.connected === true });
 
   const [ownerFirstName, setOwnerFirstName] = useState("");
-  const [ownerLastName, setOwnerLastName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [googleReviewLink, setGoogleReviewLink] = useState("");
   const [personalizedImageBaseUrl, setPersonalizedImageBaseUrl] = useState("");
@@ -59,7 +58,6 @@ export default function MessagingPage() {
     const ctx = messagingContextQuery.data;
     if (!ctx) return;
     setOwnerFirstName(ctx.ownerFirstName || "");
-    setOwnerLastName(ctx.ownerLastName || "");
     setBusinessName(ctx.businessName || "");
     setGoogleReviewLink(ctx.googleReviewLink || "");
     setPersonalizedImageBaseUrl(ctx.personalizedImageBaseUrl || "");
@@ -96,10 +94,14 @@ export default function MessagingPage() {
   const searchResults = contactQuery.data?.contacts ?? [];
 
   const handleSave = async () => {
+    if (personalizedImageEnabled && !personalizedImageBaseUrl) {
+      toast.error("Please select an image first");
+      return;
+    }
+
     await saveMutation.mutateAsync({
       locationId,
       ownerFirstName,
-      ownerLastName,
       businessName,
       businessId: messagingContextQuery.data?.businessId || "",
       companyId: messagingContextQuery.data?.companyId || "",
@@ -244,13 +246,9 @@ export default function MessagingPage() {
               </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
+              <div className="sm:col-span-2">
                 <label className="text-sm font-medium text-foreground mb-1 block">Owner First Name</label>
                 <Input value={ownerFirstName} onChange={(e) => setOwnerFirstName(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">Owner Last Name</label>
-                <Input value={ownerLastName} onChange={(e) => setOwnerLastName(e.target.value)} />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-sm font-medium text-foreground mb-1 block">Business Name</label>
@@ -301,7 +299,7 @@ export default function MessagingPage() {
               </label>
               <Button onClick={handleSave} disabled={saveMutation.isPending} className="gap-2">
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings2 className="h-4 w-4" />}
-                Update
+                {personalizedImageEnabled && !personalizedImageBaseUrl ? "Select the image" : "Update"}
               </Button>
             </div>
           </div>
