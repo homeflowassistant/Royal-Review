@@ -29,7 +29,7 @@ function useLocationAndParams() {
 
 function sliderBackground(value: number) {
   const pct = (value / 3) * 100;
-  const fill = "#00c853"; // green fill for slider
+  const fill = "#2563eb"; // blue fill for slider
   const empty = "var(--border)";
   return `linear-gradient(to right, ${fill} 0%, ${fill} ${pct}%, ${empty} ${pct}%, ${empty} 100%)`;
 }

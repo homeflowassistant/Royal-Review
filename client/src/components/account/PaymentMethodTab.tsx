@@ -323,7 +323,7 @@ export function PaymentMethodTab({ locationId, onAddPaymentMethod }: PaymentMeth
                 <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Billing Information</p>
                 <h3 className="text-lg font-semibold text-gray-900 mt-1">Business profile</h3>
               </div>
-              <div className="rounded-full bg-emerald-50 p-2 text-emerald-600">
+              <div className="rounded-full bg-blue-50 p-2 text-blue-600">
                 <RefreshCw className="h-5 w-5" />
               </div>
             </div>

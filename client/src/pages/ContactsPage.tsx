@@ -71,7 +71,7 @@ function statusStyles(status: ContactStatus) {
       return {
         label: "Clicked",
         icon: CheckCircle2,
-        className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        className: "bg-sky-50 text-sky-700 border-sky-200",
       };
     case "Do Not Contact":
     case "DND":

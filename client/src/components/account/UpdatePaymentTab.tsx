@@ -395,7 +395,7 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Status</p>
-                  <p className="text-sm font-semibold text-emerald-700">Connected</p>
+                  <p className="text-sm font-semibold text-blue-700">Connected</p>
                 </div>
               </div>
             ) : (
@@ -420,7 +420,7 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
                 <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Billing profile</p>
                 <h3 className="text-lg font-semibold text-gray-900 mt-1">Account details</h3>
               </div>
-              <div className="rounded-full bg-emerald-50 p-2 text-emerald-600">
+              <div className="rounded-full bg-blue-50 p-2 text-blue-600">
                 <CreditCard className="h-5 w-5" />
               </div>
             </div>

@@ -366,9 +366,9 @@ export default function ZapierIntegrationPage() {
                 <p className="font-medium text-foreground">3. Connect your account by adding the connection key.</p>
                 <p>Zapier uses this connection key to access your account.</p>
               </div>
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
+              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
                 <p className="flex items-center gap-2 font-medium text-foreground">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <ShieldCheck className="h-4 w-4 text-blue-600" />
                   Security model
                 </p>
                 <p>Account credentials stay server-side. The key is hashed for validation, while the raw key is retained for user copying.</p>
