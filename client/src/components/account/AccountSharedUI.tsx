@@ -60,7 +60,7 @@ export function ErrorState({
         <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
         <p className="text-sm text-gray-600 mb-6">{message}</p>
-        <Button onClick={onRetry} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={onRetry}>
           Try Again
         </Button>
       </div>
@@ -86,7 +86,7 @@ export function EmptyState({
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
         <p className="text-sm text-gray-600 mb-6">{message}</p>
         {action && (
-          <Button onClick={action.onClick} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={action.onClick}>
             {action.label}
           </Button>
         )}

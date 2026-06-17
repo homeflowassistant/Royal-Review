@@ -299,7 +299,7 @@ export function AddUserTab({ locationId, onSuccess }: AddUserTabProps) {
         <Button onClick={() => window.history.back()} variant="outline" className="flex-1" disabled={submitting}>
           Cancel
         </Button>
-        <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={submitting}>
+        <Button type="submit" className="flex-1" disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -213,7 +213,7 @@ export function EditUserModal({ user, onClose, onSave, saving }: EditUserModalPr
             <Button onClick={onClose} variant="outline" className="flex-1" disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={saving}>
+            <Button onClick={handleSubmit} className="flex-1" disabled={saving}>
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -268,7 +268,7 @@ function PaymentDrawer({
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-700" disabled={saving}>
+          <Button onClick={handleSubmit} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Save
           </Button>
@@ -406,7 +406,7 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
                     : 'No payment card is connected yet.'}
                 </p>
                 <div className="mt-4">
-                  <Button onClick={() => setDrawerOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+                  <Button onClick={() => setDrawerOpen(true)}>
                     Add Card
                   </Button>
                 </div>
@@ -447,7 +447,7 @@ export function UpdatePaymentTab({ locationId }: UpdatePaymentTabProps) {
               </div>
             </div>
             <div className="mt-5 flex gap-3">
-              <Button onClick={() => setDrawerOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={() => setDrawerOpen(true)}>
                 Replace Card
               </Button>
             </div>

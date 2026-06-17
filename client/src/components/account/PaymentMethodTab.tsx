@@ -103,7 +103,7 @@ function EmptyPaymentState({ onAddPaymentMethod }: { onAddPaymentMethod?: () => 
         </p>
 
         <div className="mt-8 flex justify-center">
-          <Button onClick={onAddPaymentMethod} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 h-12">
+          <Button onClick={onAddPaymentMethod} className="px-6 py-3 h-12">
             <CreditCard className="mr-2 h-4 w-4" />
             Add Payment Method
           </Button>
