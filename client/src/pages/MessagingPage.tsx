@@ -22,7 +22,7 @@ function buildPersonalizedImageUrl(baseUrl: string, contactName: string): string
 
   try {
     const url = new URL(urlText);
-    url.searchParams.set("name", contactName);
+    url.searchParams.set("name", contactName +"!");
     return url.toString();
   } catch {
     const separator = urlText.includes("?") ? "&" : "?";
