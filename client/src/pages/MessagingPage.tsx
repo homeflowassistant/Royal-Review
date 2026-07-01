@@ -26,7 +26,7 @@ function buildPersonalizedImageUrl(baseUrl: string, contactName: string): string
     return url.toString();
   } catch {
     const separator = urlText.includes("?") ? "&" : "?";
-    return `${urlText}${separator}name=${encodeURIComponent(contactName)}`;
+    return `${urlText}${separator}name=${encodeURIComponent(contactName+"!")}`;
   }
 }
 
