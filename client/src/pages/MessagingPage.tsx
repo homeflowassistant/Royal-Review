@@ -80,7 +80,8 @@ export default function MessagingPage() {
     (messagingContextQuery.error instanceof Error && messagingContextQuery.error.message) ||
     undefined;
 
-  const imageName = selectedContact?.firstName || ownerFirstName || "Jessica";
+  //const imageName = selectedContact?.firstName || ownerFirstName || "Jessica";
+  const imageName = selectedContact?.firstName || "Jessica";
   const imageUrl = buildPersonalizedImageUrl(personalizedImageBaseUrl, imageName);
 
   const currentMessage = customMessage
@@ -215,7 +216,7 @@ export default function MessagingPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-foreground">Phone Preview</p>
-              <p className="text-xs text-muted-foreground">Shows the current owner or selected contact</p>
+              <p className="text-xs text-muted-foreground">Shows the selected contact</p>
             </div>
           </div>
 
@@ -270,7 +271,7 @@ export default function MessagingPage() {
                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0 space-y-2">
                         <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">✅ Image Configured</p>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 break-all">{personalizedImageBaseUrl}</p>
+                        
                       </div>
                       <button
                         onClick={() => setPersonalizedImageBaseUrl("")}
