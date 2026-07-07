@@ -33,7 +33,7 @@ describe("processLocationInstall", () => {
     await processLocationInstall("agency_token", "company_123", "loc_123");
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "https://services.leadconnectorhq.com/oauth/location-token",
+      "https://services.leadconnectorhq.com/oauth/locationToken",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

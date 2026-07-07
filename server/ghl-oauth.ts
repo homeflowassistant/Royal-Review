@@ -20,14 +20,14 @@ export async function processLocationInstall(
   companyId: string,
   locationId: string
 ): Promise<void> {
-  const response = await fetch("https://services.leadconnectorhq.com/oauth/location-token", {
+  const response = await fetch("https://services.leadconnectorhq.com/oauth/locationToken", {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/json",
       Authorization: `Bearer ${agencyToken}`,
       Version: "2021-07-28",
     },
-    body: new URLSearchParams({ companyId, locationId }),
+    body: JSON.stringify({ companyId, locationId }),
   });
 
   if (!response.ok) {
