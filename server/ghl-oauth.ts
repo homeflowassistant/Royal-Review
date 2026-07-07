@@ -10,8 +10,39 @@
 import type { Express, Request, Response } from "express";
 import {
   exchangeCodeForTokens,
+  getInstallation,
+  removeInstallation,
   upsertInstallation,
 } from "./ghl-service.js";
+
+export async function processLocationInstall(
+  agencyToken: string,
+  companyId: string,
+  locationId: string
+): Promise<void> {
+  const response = await fetch("https://services.leadconnectorhq.com/oauth/location-token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Bearer ${agencyToken}`,
+      Version: "2021-07-28",
+    },
+    body: new URLSearchParams({ companyId, locationId }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`GHL location-token exchange failed: ${response.status} ${errorBody}`);
+  }
+
+  const locationTokenResponse = (await response.json()) as { access_token?: string };
+  if (!locationTokenResponse.access_token) {
+    throw new Error("GHL location-token exchange returned no access token");
+  }
+
+  await upsertInstallation(locationTokenResponse as Parameters<typeof upsertInstallation>[0], locationId);
+  console.log(`[GHL Webhook] Location token stored for locationId: ${locationId}`);
+}
 
 export function registerGHLOAuthRoutes(app: Express): void {
   /**
@@ -44,21 +75,14 @@ export function registerGHLOAuthRoutes(app: Express): void {
       // Exchange authorization code for tokens
       const tokenResponse = await exchangeCodeForTokens(code, redirectUri);
 
-      // Determine the locationId — GHL may return it in the token response
-      // For sub-account level apps, locationId is included
-      const locationId = tokenResponse.locationId;
-      if (!locationId) {
-        // If no locationId, this might be a company-level token
-        // We'll store it with the companyId as a fallback
-        console.warn("[GHL OAuth] No locationId in token response, using companyId");
+      const companyId = tokenResponse.companyId;
+      if (!companyId) {
+        throw new Error("No companyId returned from GHL token exchange");
       }
 
-      const storageId = locationId || tokenResponse.companyId || "unknown";
+      await upsertInstallation(tokenResponse, companyId);
 
-      // Store the installation
-      await upsertInstallation(tokenResponse, storageId);
-
-      console.log(`[GHL OAuth] App installed successfully for location: ${storageId}`);
+      console.log(`[GHL OAuth] Agency token stored for companyId: ${companyId}`);
 
       // Show success page
       res.send(`
@@ -101,11 +125,36 @@ export function registerGHLOAuthRoutes(app: Express): void {
       const payload = req.body;
       console.log("[GHL Webhook] Received:", JSON.stringify(payload));
 
-      if (payload.type === "INSTALL") {
-        console.log(`[GHL Webhook] App installed for location: ${payload.locationId}`);
-      } else if (payload.type === "UNINSTALL") {
+      if (payload.type === "INSTALL" && payload.locationId) {
+        const { locationId, companyId } = payload as {
+          locationId?: string;
+          companyId?: string;
+        };
+
+        if (!companyId || !locationId) {
+          console.error("[GHL Webhook] Missing companyId or locationId for install event");
+          return res.status(400).json({ error: "Missing companyId or locationId" });
+        }
+
+        const agencyInstallation = await getInstallation(companyId);
+
+        if (!agencyInstallation) {
+          console.warn(`[GHL Webhook] Agency token not ready for ${companyId}, retrying in 3s...`);
+          setTimeout(async () => {
+            const retry = await getInstallation(companyId);
+            if (retry) {
+              await processLocationInstall(retry.accessToken, companyId, locationId);
+            } else {
+              console.error(`[GHL Webhook] Agency token still not found for ${companyId} after retry`);
+            }
+          }, 3000);
+          return res.json({ success: true });
+        }
+
+        await processLocationInstall(agencyInstallation.accessToken, companyId, locationId);
+      } else if (payload.type === "UNINSTALL" && payload.locationId) {
+        await removeInstallation(payload.locationId);
         console.log(`[GHL Webhook] App uninstalled for location: ${payload.locationId}`);
-        // Optionally: remove the installation from DB
       }
 
       res.json({ success: true });

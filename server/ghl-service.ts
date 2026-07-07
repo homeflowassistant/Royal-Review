@@ -8,7 +8,7 @@
  * - Installation management (CRUD on ghl_installations table)
  */
 
-import { eq, or } from "drizzle-orm";
+import { delete as deleteDb, eq, or } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { ENV } from "./_core/env.js";
 import { ghlInstallations, type GHLInstallation } from "../drizzle/schema.js";
@@ -1165,6 +1165,16 @@ export async function getAllInstallations(): Promise<GHLInstallation[]> {
   if (!db) return [];
 
   return db.select().from(ghlInstallations);
+}
+
+/**
+ * Remove an installation by locationId.
+ */
+export async function removeInstallation(locationId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.delete(ghlInstallations).where(eq(ghlInstallations.locationId, locationId));
 }
 
 /**
