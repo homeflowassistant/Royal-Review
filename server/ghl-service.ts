@@ -1053,6 +1053,7 @@ export async function exchangeCodeForTokens(
       grant_type: "authorization_code",
       code,
       redirect_uri: redirectUri,
+      user_type: "Company",
     }),
   });
 
@@ -1106,15 +1107,19 @@ export async function upsertInstallation(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const expiresAt = Date.now() + tokenResponse.expires_in * 1000;
+  const normalizedLocationId = locationId.trim();
+  const expiresAt = Date.now() + (Number(tokenResponse.expires_in) || 60 * 60 * 24) * 1000;
+  const isCompanyToken = tokenResponse.userType === "Company" || !tokenResponse.locationId;
+  const installationKey = isCompanyToken ? normalizedLocationId : normalizedLocationId;
+  const companyId = tokenResponse.companyId ?? (isCompanyToken ? normalizedLocationId : null);
 
   await db
     .insert(ghlInstallations)
     .values({
-      locationId,
-      companyId: tokenResponse.companyId ?? null,
+      locationId: installationKey,
+      companyId,
       accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token,
+      refreshToken: tokenResponse.refresh_token ?? tokenResponse.access_token,
       expiresAt,
       scopes: tokenResponse.scope ?? null,
       userId: tokenResponse.userId ?? null,
@@ -1123,10 +1128,10 @@ export async function upsertInstallation(
       target: ghlInstallations.locationId,
       set: {
         accessToken: tokenResponse.access_token,
-        refreshToken: tokenResponse.refresh_token,
+        refreshToken: tokenResponse.refresh_token ?? tokenResponse.access_token,
         expiresAt,
         scopes: tokenResponse.scope ?? null,
-        companyId: tokenResponse.companyId ?? null,
+        companyId,
         userId: tokenResponse.userId ?? null,
         updatedAt: new Date(),
       },
@@ -1146,15 +1151,46 @@ export async function getInstallation(
   const result = await db
     .select()
     .from(ghlInstallations)
-    .where(
-      or(
-        eq(ghlInstallations.locationId, normalizedLocationId),
-        eq(ghlInstallations.companyId, normalizedLocationId)
-      )
-    )
+    .where(eq(ghlInstallations.locationId, normalizedLocationId))
     .limit(1);
 
-  return result.length > 0 ? result[0] : undefined;
+  if (result.length > 0) {
+    return result[0];
+  }
+
+  const companyMatch = await db
+    .select()
+    .from(ghlInstallations)
+    .where(eq(ghlInstallations.companyId, normalizedLocationId))
+    .limit(1);
+
+  return companyMatch.length > 0 ? companyMatch[0] : undefined;
+}
+
+export async function getAgencyInstallation(
+  companyId: string
+): Promise<GHLInstallation | undefined> {
+  const normalizedCompanyId = companyId.trim();
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const companyMatch = await db
+    .select()
+    .from(ghlInstallations)
+    .where(eq(ghlInstallations.companyId, normalizedCompanyId))
+    .limit(1);
+
+  if (companyMatch.length > 0) {
+    return companyMatch[0];
+  }
+
+  const fallbackMatch = await db
+    .select()
+    .from(ghlInstallations)
+    .where(eq(ghlInstallations.locationId, normalizedCompanyId))
+    .limit(1);
+
+  return fallbackMatch.length > 0 ? fallbackMatch[0] : undefined;
 }
 
 /**

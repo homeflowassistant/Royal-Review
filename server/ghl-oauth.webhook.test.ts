@@ -49,7 +49,37 @@ describe("processLocationInstall", () => {
     );
   });
 
+  it("retries the location-token exchange before succeeding", async () => {
+    process.env.GHL_LOCATION_TOKEN_RETRY_DELAY_MS = "1";
+
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('{"statusCode":401,"message":"This token\'s user type is not yet supported!"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('{"statusCode":401,"message":"This token\'s user type is not yet supported!"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: "location_token", locationId: "loc_123" }),
+      });
+
+    await processLocationInstall("agency_token", "company_123", "loc_123");
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+    expect(upsertInstallationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ access_token: "location_token" }),
+      "loc_123"
+    );
+  });
+
   it("throws when the location-token exchange is rejected", async () => {
+    process.env.GHL_LOCATION_TOKEN_RETRY_DELAY_MS = "1";
+
     (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 401,

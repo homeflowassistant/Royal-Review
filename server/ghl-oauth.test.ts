@@ -90,6 +90,7 @@ describe("exchangeCodeForTokens", () => {
     expect(body.get("redirect_uri")).toBe(
       "https://example.com/api/ghl/oauth/callback"
     );
+    expect(body.get("user_type")).toBe("Company");
   });
 
   it("throws error when token exchange fails", async () => {
