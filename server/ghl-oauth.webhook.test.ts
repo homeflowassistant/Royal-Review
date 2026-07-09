@@ -48,4 +48,22 @@ describe("processLocationInstall", () => {
       "loc_123"
     );
   });
+
+  it("persists the installation record even when the location-token exchange is rejected", async () => {
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: () => Promise.resolve('{"statusCode":401,"message":"This token\'s user type is not yet supported!"}'),
+    });
+
+    await expect(processLocationInstall("agency_token", "company_123", "loc_123")).resolves.toBeUndefined();
+
+    expect(upsertInstallationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: "company_123",
+        locationId: "loc_123",
+      }),
+      "loc_123"
+    );
+  });
 });
