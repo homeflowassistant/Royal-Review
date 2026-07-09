@@ -1141,6 +1141,34 @@ export async function upsertInstallation(
 /**
  * Get an installation by locationId.
  */
+// export async function getInstallation(
+//   locationId: string
+// ): Promise<GHLInstallation | undefined> {
+//   const normalizedLocationId = locationId.trim();
+//   const db = await getDb();
+//   if (!db) return undefined;
+
+//   const result = await db
+//     .select()
+//     .from(ghlInstallations)
+//     .where(eq(ghlInstallations.locationId, normalizedLocationId))
+//     .limit(1);
+
+//   if (result.length > 0) {
+//     return result[0];
+//   }
+
+//   const companyMatch = await db
+//     .select()
+//     .from(ghlInstallations)
+//     .where(eq(ghlInstallations.companyId, normalizedLocationId))
+//     .limit(1);
+
+//   return companyMatch.length > 0 ? companyMatch[0] : undefined;
+// }
+/**
+ * Get an installation by locationId.
+ */
 export async function getInstallation(
   locationId: string
 ): Promise<GHLInstallation | undefined> {
@@ -1148,25 +1176,42 @@ export async function getInstallation(
   const db = await getDb();
   if (!db) return undefined;
 
+  // Only search by exact locationId match. Do not fallback to companyId.
+  // If a location doesn't have a token, it shouldn't use an agency token by accident.
   const result = await db
     .select()
     .from(ghlInstallations)
     .where(eq(ghlInstallations.locationId, normalizedLocationId))
     .limit(1);
 
-  if (result.length > 0) {
-    return result[0];
-  }
-
-  const companyMatch = await db
-    .select()
-    .from(ghlInstallations)
-    .where(eq(ghlInstallations.companyId, normalizedLocationId))
-    .limit(1);
-
-  return companyMatch.length > 0 ? companyMatch[0] : undefined;
+  return result.length > 0 ? result[0] : undefined;
 }
 
+// export async function getAgencyInstallation(
+//   companyId: string
+// ): Promise<GHLInstallation | undefined> {
+//   const normalizedCompanyId = companyId.trim();
+//   const db = await getDb();
+//   if (!db) return undefined;
+
+//   const companyMatch = await db
+//     .select()
+//     .from(ghlInstallations)
+//     .where(eq(ghlInstallations.companyId, normalizedCompanyId))
+//     .limit(1);
+
+//   if (companyMatch.length > 0) {
+//     return companyMatch[0];
+//   }
+
+//   const fallbackMatch = await db
+//     .select()
+//     .from(ghlInstallations)
+//     .where(eq(ghlInstallations.locationId, normalizedCompanyId))
+//     .limit(1);
+
+//   return fallbackMatch.length > 0 ? fallbackMatch[0] : undefined;
+// }
 export async function getAgencyInstallation(
   companyId: string
 ): Promise<GHLInstallation | undefined> {
@@ -1174,23 +1219,19 @@ export async function getAgencyInstallation(
   const db = await getDb();
   if (!db) return undefined;
 
+  // We specifically look for the row where locationId equals the companyId.
+  // In your upsertInstallation logic, Company tokens are stored with locationId = companyId.
   const companyMatch = await db
     .select()
     .from(ghlInstallations)
-    .where(eq(ghlInstallations.companyId, normalizedCompanyId))
+    .where(eq(ghlInstallations.locationId, normalizedCompanyId))
     .limit(1);
 
   if (companyMatch.length > 0) {
     return companyMatch[0];
   }
 
-  const fallbackMatch = await db
-    .select()
-    .from(ghlInstallations)
-    .where(eq(ghlInstallations.locationId, normalizedCompanyId))
-    .limit(1);
-
-  return fallbackMatch.length > 0 ? fallbackMatch[0] : undefined;
+  return undefined;
 }
 
 /**
