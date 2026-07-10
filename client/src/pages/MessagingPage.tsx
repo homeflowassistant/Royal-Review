@@ -300,7 +300,7 @@ export default function MessagingPage() {
               </label>
               <Button onClick={handleSave} disabled={saveMutation.isPending} className="gap-2">
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Settings2 className="h-4 w-4" />}
-                {personalizedImageEnabled && !personalizedImageBaseUrl ? "Select the image" : "Update"}
+                {personalizedImageEnabled && !personalizedImageBaseUrl ? "Select the image" : "Save"}
               </Button>
             </div>
           </div>
