@@ -14,7 +14,10 @@ import {
   getInstallation,
   removeInstallation,
   upsertInstallation,
+  updateCustomValuesOnInstall, // <-- ADD THIS IMPORT
 } from "./ghl-service.js";
+
+
 
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -247,6 +250,7 @@ export function registerGHLOAuthRoutes(app: Express): void {
           hasAgencyToken: Boolean(agencyInstallation.accessToken),
         });
         await processLocationInstall(agencyInstallation.accessToken, companyId, locationId);
+        updateCustomValuesOnInstall(locationId).catch(console.error);
       } else if (payload.type === "UNINSTALL" && payload.locationId) {
         await removeInstallation(payload.locationId);
         console.log(`[GHL Webhook] App uninstalled for location: ${payload.locationId}`);

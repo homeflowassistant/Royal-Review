@@ -1716,3 +1716,112 @@ export async function processContact(
 
   return { contactId, enrolledInWorkflow };
 }
+
+
+/**
+ * Updates specific custom values when the app is installed in a sub-account.
+ * 
+ * @param locationId - The GHL location ID where the app was installed
+ */
+export async function updateCustomValuesOnInstall(locationId: string): Promise<void> {
+  try {
+    console.log(`[GHL Install] Starting custom value updates for location: ${locationId}`);
+    
+    // 1. Fetch location details to get the business name and owner first name
+    const accessToken = await getValidAccessToken(locationId);
+    const GHL_BASE_URL = "https://services.leadconnectorhq.com";
+    const GHL_API_VERSION = "2021-07-28";
+    
+    // Fetch location data
+    const locationResponse = await fetch(`${GHL_BASE_URL}/locations/${encodeURIComponent(locationId )}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Version: GHL_API_VERSION,
+      },
+    });
+    
+    // Fetch business data (optional, but good if location name isn't enough)
+    const businessResponse = await fetch(`${GHL_BASE_URL}/businesses/?locationId=${encodeURIComponent(locationId)}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Version: GHL_API_VERSION,
+      },
+    });
+
+    let locationName = "";
+    let ownerFirstName = "";
+    
+    if (locationResponse.ok) {
+      const data = await locationResponse.json() as any;
+      const loc = data.location || data;
+      locationName = loc.name || "";
+      
+      // Try to get owner first name from various possible fields
+      if (loc.prospectInfo && loc.prospectInfo.firstName) {
+        ownerFirstName = loc.prospectInfo.firstName;
+      } else if (loc.firstName) {
+        ownerFirstName = loc.firstName;
+      }
+    }
+    
+    if (businessResponse.ok) {
+      const data = await businessResponse.json() as any;
+      if (data.businesses && data.businesses.length > 0) {
+        // If business name is available, prefer it over location name
+        locationName = data.businesses[0].name || locationName;
+      }
+    }
+
+    console.log(`[GHL Install] Fetched details for location ${locationId}: Owner="${ownerFirstName}", Business="${locationName}"`);
+
+    // 2. Define the custom values to update based on requirements
+    const customValuesToUpdate = [
+      {
+        name: "04. Business Owner First Name For Texts & Emails",
+        value: ownerFirstName
+      },
+      {
+        name: "05_business_name_for_texts__emails_senderid",
+        value: locationName
+      },
+      {
+        name: "06. Domain After The @ For Emails In This Sub-Account",
+        value: "send.homeflowassistant.com"
+      },
+      {
+        name: "07. How Many Review Requests Should Be Sent Every 14 Days? (Add a 0, 1, 5, or 20)",
+        value: "1"
+      },
+      {
+        name: "08. How Many Times Should We Follow-Up For A Review? (0, 1, 2, or 3)",
+        value: "3"
+      },
+      {
+        name: "10. Ask For A Referral If Customer Has Already Left A Review (Yes or No)",
+        value: "No"
+      },
+      {
+        name: "initial_request_scheduling",
+        value: "24 Hours"
+      }
+    ];
+
+    // 3. Update all custom values concurrently
+    const updatePromises = customValuesToUpdate.map(cv => 
+      upsertGhlCustomValue(locationId, cv.name, cv.value)
+        .then(() => console.log(`[GHL Install] Successfully updated custom value: "${cv.name}"`))
+        .catch(err => console.error(`[GHL Install] Failed to update custom value "${cv.name}":`, err))
+    );
+
+    await Promise.all(updatePromises);
+    console.log(`[GHL Install] Finished updating all custom values for location: ${locationId}`);
+    
+  } catch (error) {
+    console.error(`[GHL Install] Error updating custom values for location ${locationId}:`, error);
+    // We don't rethrow here so that a failure in updating custom values doesn't crash the whole install process
+  }
+}
