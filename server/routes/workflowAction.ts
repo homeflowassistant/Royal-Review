@@ -43,7 +43,7 @@ export function registerWorkflowActionRoutes(app: Express): void {
         const exactMatch = emailResult.contacts.find(c => c.email.toLowerCase() === contactEmail.toLowerCase());
         if (exactMatch) {
           contactId = exactMatch.id;
-          matchedContactName = exactMatch.name;
+          matchedContactName = contactName || exactMatch.name;
         }
       }
 
@@ -57,7 +57,7 @@ export function registerWorkflowActionRoutes(app: Express): void {
         });
         if (exactMatch) {
           contactId = exactMatch.id;
-          matchedContactName = exactMatch.name;
+          matchedContactName = contactName || exactMatch.name;
         }
       }
 
@@ -66,7 +66,7 @@ export function registerWorkflowActionRoutes(app: Express): void {
         const nameResult = await searchContacts(locationId, { query: contactName, pageLimit: 1 });
         if (nameResult.contacts.length > 0) {
           contactId = nameResult.contacts[0].id;
-          matchedContactName = nameResult.contacts[0].name;
+          matchedContactName = contactName || nameResult.contacts[0].name;
         }
       }
 
