@@ -9,6 +9,7 @@ import { registerStorageProxy } from "./storageProxy.js";
 import { registerDynamicImageRenderRoute } from "../routes/dynamicImageRender.js";
 import accountManagementRoutes from "../routes/accountManagement.js";
 import { registerZapierRoutes } from "../routes/zapier.js";
+import { registerWorkflowActionRoutes } from "../routes/workflowAction.js";
 import { appRouter } from "../routers.js";
 import { createContext } from "./context.js";
 
@@ -65,6 +66,7 @@ export async function createApp(options?: { serveClient?: boolean }): Promise<Ex
   registerOAuthRoutes(app);
   registerGHLOAuthRoutes(app);
   registerZapierRoutes(app);
+  registerWorkflowActionRoutes(app);
   app.use("/api", accountManagementRoutes);
 
   app.use(
