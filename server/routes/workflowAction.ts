@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { getValidAccessToken, searchContacts } from "../ghl-service.js";
+import { getValidAccessToken, getMessagingContext, searchContacts } from "../ghl-service.js";
 import { Pool } from "pg";
 
 export function registerWorkflowActionRoutes(app: Express): void {
@@ -76,35 +76,29 @@ export function registerWorkflowActionRoutes(app: Express): void {
 
       console.log("[WorkflowAction] Found contactId:", contactId, "Name:", matchedContactName);
 
-      // 4. Fetch the most recent base image key from stored_files
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-      const dbQuery = "SELECT key FROM stored_files ORDER BY created_at DESC LIMIT 1";
-      const dbResult = await pool.query(dbQuery);
-      await pool.end();
+      // 4. Fetch the personalized image base URL from GHL Custom Values
+      // This is the exact same URL template used by the Messaging Page
+      const messagingContext = await getMessagingContext(locationId);
+      const baseUrl = messagingContext.personalizedImageBaseUrl;
 
-      if (dbResult.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "No base image found." });
+      if (!baseUrl) {
+        return res.status(404).json({ success: false, message: "No personalized image URL template found in GHL Custom Values. Please upload an image first in the Messaging Page." });
       }
 
-      const baseImageKey = dbResult.rows[0].key;
-      console.log("[WorkflowAction] Using base image key:", baseImageKey);
+      console.log("[WorkflowAction] Using base URL template:", baseUrl);
 
-      // 5. Construct the URL using the EXACT same logic as your Messaging Page
+      // 5. Construct the URL using the EXACT same logic as your Messaging Page (buildPersonalizedImageUrl)
       // This ensures the image is rendered perfectly via the proven dynamicImageRender route
-      const proto = req.protocol || (req.headers["x-forwarded-proto"] || "https" ).split(",")[0];
-      const host = req.get("host") || process.env.HOST || "backend.royalreview.io";
-      
-      const personalizationUrl = `${proto}://${host}/api/dynamic-image/${encodeURIComponent(baseImageKey)}/base` +
-        `?fontSize=72` +
-        `&fontColor=%23000000` +
-        `&fontWeight=bold` +
-        `&positionType=center` +
-        `&xPercent=50` +
-        `&yPercent=50` +
-        `&bgColor=%23000000` +
-        `&bgOpacity=0` +
-        `&padding=16` +
-        `&name=${encodeURIComponent(matchedContactName)}`;
+      const personalizationUrl = (() => {
+        try {
+          const url = new URL(baseUrl);
+          url.searchParams.set("name", matchedContactName + "!");
+          return url.toString();
+        } catch {
+          const separator = baseUrl.includes("?") ? "&" : "?";
+          return `${baseUrl}${separator}name=${encodeURIComponent(matchedContactName + "!")}`;
+        }
+      })();
 
       console.log("[WorkflowAction] Generated personalized URL:", personalizationUrl);
 
@@ -129,7 +123,7 @@ export function registerWorkflowActionRoutes(app: Express): void {
             Authorization: `Bearer ${accessToken}`,
             Version: "2021-04-15",
           },
-          body: JSON.stringify(ghlBody ),
+          body: JSON.stringify(ghlBody),
         }
       );
 
