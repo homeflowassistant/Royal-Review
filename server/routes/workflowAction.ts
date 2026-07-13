@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
-import { getValidAccessToken, getMessagingContext, searchContacts } from "../ghl-service.js";
+import { getValidAccessToken, getMessagingContext, searchContacts, getContactById } from "../ghl-service.js";
 import { Pool } from "pg";
+
+
 
 export function registerWorkflowActionRoutes(app: Express): void {
   app.post("/api/workflow/send-personalized-sms", async (req: Request, res: Response) => {
@@ -16,29 +18,40 @@ export function registerWorkflowActionRoutes(app: Express): void {
           ? req.query.locationId
           : req.headers["locationid"] as string | undefined;
 
-      // 2. Extract all possible contact identifiers and message
-      const contactName = body.name || body.contactName || body.firstName || "";
-      const contactEmail = body.email || body.contactEmail || "";
-      const contactPhone = body.phone || body.contactPhone || "";
-      const message = body.message || body.smsMessage || "";
+            // 2. Extract fields from body.data (where GHL puts them)
+      const data = body.data || {};
+      const contactName = data.name || data.contactName || data.firstName || "";
+      const contactEmail = data.email || data.Email || data.contactEmail || "";
+      const contactPhone = data.phone || data.contactPhone || data.phoneNumber || "";
+      const message = data.message || data.smsMessage || "";
+      const contactIdFromExtras = body.extras?.contactId || "";
 
       console.log("[WorkflowAction] Extracted:");
       console.log("  locationId:", locationId);
       console.log("  contactName:", contactName);
       console.log("  contactEmail:", contactEmail);
+      console.log("  contactPhone:", contactPhone);
       console.log("  message:", message);
+      console.log("  contactId from extras:", contactIdFromExtras);
 
       if (!locationId) {
         return res.status(400).json({ success: false, message: "Missing locationId." });
       }
 
-      // 3. Look up the contactId by searching GHL contacts
+      // 3. Look up the contact - first try extras.contactId, then search
       console.log("[WorkflowAction] Looking up contact...");
       let contactId: string | undefined;
       let matchedContactName: string = "";
 
-      // Priority 1: Search by email
-      if (contactEmail) {
+      // Priority 1: Use contactId from extras (most reliable)
+      if (contactIdFromExtras) {
+        console.log("[WorkflowAction] Using contactId from extras:", contactIdFromExtras);
+        contactId = contactIdFromExtras;
+        // Use the name sent from the workflow for the image (this will be {{contact.first_name}})
+        matchedContactName = contactName || "Friend";
+      }
+      // Priority 2: Search by email
+      else if (contactEmail) {
         const emailResult = await searchContacts(locationId, { query: contactEmail, pageLimit: 1 });
         const exactMatch = emailResult.contacts.find(c => c.email.toLowerCase() === contactEmail.toLowerCase());
         if (exactMatch) {
@@ -46,9 +59,8 @@ export function registerWorkflowActionRoutes(app: Express): void {
           matchedContactName = contactName || exactMatch.name;
         }
       }
-
-      // Priority 2: Search by phone
-      if (!contactId && contactPhone) {
+      // Priority 3: Search by phone
+      else if (contactPhone) {
         const phoneResult = await searchContacts(locationId, { query: contactPhone, pageLimit: 1 });
         const exactMatch = phoneResult.contacts.find(c => {
           const cleanPhone = (c.phone || "").replace(/[^0-9]/g, "");
@@ -60,14 +72,17 @@ export function registerWorkflowActionRoutes(app: Express): void {
           matchedContactName = contactName || exactMatch.name;
         }
       }
-
-      // Priority 3: Search by name
-      if (!contactId && contactName) {
+      // Priority 4: Search by name
+      else if (contactName) {
         const nameResult = await searchContacts(locationId, { query: contactName, pageLimit: 1 });
         if (nameResult.contacts.length > 0) {
           contactId = nameResult.contacts[0].id;
           matchedContactName = contactName || nameResult.contacts[0].name;
         }
+      }
+
+      if (!contactId) {
+        return res.status(404).json({ success: false, message: "No contact found." });
       }
 
       if (!contactId) {
