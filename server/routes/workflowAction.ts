@@ -1,71 +1,5 @@
-// import type { Express, Request, Response } from "express";
-// import { getValidAccessToken } from "../ghl-service.js";
-// import { compositeName } from "../services/imageCompositor.js";
-// import { storagePut } from "../storage.js";
-// import { Pool } from "pg";
-
-// export function registerWorkflowActionRoutes(app: Express): void {
-//   app.post("/api/workflow/send-personalized-sms", async (req: Request, res: Response) => {
-//     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-//     try {
-//       const { data, extras } = req.body;
-//       const locationId = extras?.locationId;
-//       const contactId = extras?.contactId;
-//       const contactName = data?.name || "Friend";
-//       const message = data?.message || "";
-
-//       if (!locationId || !contactId) {
-//         return res.status(400).json({ success: false, message: "Missing context." });
-//       }
-
-//       // Automated Database Lookup
-//       const query = "SELECT data FROM stored_files ORDER BY created_at DESC LIMIT 1";
-//       const dbResult = await pool.query(query);
-      
-//       if (dbResult.rows.length === 0) {
-//         return res.status(404).json({ success: false, message: "No base image found." });
-//       }
-
-//       const baseImageBuffer = Buffer.from(dbResult.rows[0].data, 'base64');
-
-//       // Personalization & Storage
-//       const personalizedImageBuffer = await compositeName(baseImageBuffer, contactName);
-//       const uploadResult = await storagePut(`personalized/${contactId}.jpg`, personalizedImageBuffer, "image/jpeg");
-      
-//       let finalImageUrl = uploadResult.url;
-//       if (finalImageUrl.startsWith('/')) {
-//         finalImageUrl = `${process.env.BACKEND_URL}${finalImageUrl}`;
-//       }
-
-//       // GHL API Send
-//       const accessToken = await getValidAccessToken(locationId);
-//       await fetch(`https://services.leadconnectorhq.com/conversations/messages`, {
-//         method: "POST",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${accessToken}`,
-//           Version: "2021-04-15",
-//         },
-//         body: JSON.stringify({
-//           type: "SMS",
-//           contactId,
-//           message,
-//           attachments: [finalImageUrl]
-//         } ),
-//       });
-
-//       return res.json({ success: true });
-//     } catch (error) {
-//       return res.status(500).json({ success: false, message: "Internal error" });
-//     } finally {
-//       await pool.end();
-//     }
-//   });
-// }
-
-
 import type { Express, Request, Response } from "express";
-import { getValidAccessToken } from "../ghl-service.js";
+import { getValidAccessToken, searchContacts } from "../ghl-service.js";
 import { compositeName } from "../services/imageCompositor.js";
 import { storagePut } from "../storage.js";
 import { Pool } from "pg";
@@ -74,89 +8,140 @@ export function registerWorkflowActionRoutes(app: Express): void {
   app.post("/api/workflow/send-personalized-sms", async (req: Request, res: Response) => {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     try {
-      // === DEBUG LOGGING: Log everything GHL sends ===
       console.log("[WorkflowAction] === INCOMING REQUEST ===");
       console.log("[WorkflowAction] Method:", req.method);
       console.log("[WorkflowAction] URL:", req.originalUrl);
-      console.log("[WorkflowAction] Headers:", JSON.stringify(req.headers, null, 2));
-      console.log("[WorkflowAction] Body keys:", Object.keys(req.body || {}));
+      console.log("[WorkflowAction] Query:", JSON.stringify(req.query));
       console.log("[WorkflowAction] Full Body:", JSON.stringify(req.body, null, 2));
 
       const body = req.body;
 
-      // GHL sends payload in this shape:
-      // { data: { name: "...", message: "..." }, extras: { locationId: "...", contactId: "..." } }
-      // But we need to handle all possible structures
+      // 1. Extract locationId from query string or headers
+      let locationId: string | undefined =
+        typeof req.query.locationId === "string"
+          ? req.query.locationId
+          : typeof req.query.location_id === "string"
+            ? req.query.location_id
+            : undefined;
 
-      let locationId: string | undefined;
-      let contactId: string | undefined;
-      let contactName: string;
-      let message: string;
-
-      // Try the standard GHL structure first
-      if (body.extras && typeof body.extras === "object") {
-        locationId = body.extras.locationId;
-        contactId = body.extras.contactId;
-      }
-
-      // Fallback: GHL sometimes sends locationId at the top level
       if (!locationId) {
-        locationId = body.locationId || body.location_id;
-      }
-      if (!contactId) {
-        contactId = body.contactId || body.contact_id;
-      }
-
-      // Extract data fields
-      if (body.data && typeof body.data === "object") {
-        contactName = body.data.name || body.data.contactName || body.data.firstName || "Friend";
-        message = body.data.message || body.data.smsMessage || "";
-      } else {
-        // Fallback: top-level fields
-        contactName = body.name || body.contactName || body.firstName || "Friend";
-        message = body.message || body.smsMessage || "";
+        const headerLocationId = req.headers["locationid"] as string | undefined;
+        if (headerLocationId) {
+          locationId = headerLocationId;
+        }
       }
 
-      console.log("[WorkflowAction] Extracted values:");
+      // 2. Extract all possible contact identifiers and message
+      const contactName = body.name || body.contactName || body.firstName || "";
+      const contactEmail = body.email || body.contactEmail || "";
+      const contactPhone = body.phone || body.contactPhone || body.phoneNumber || "";
+      const message = body.message || body.smsMessage || "";
+
+      console.log("[WorkflowAction] Extracted:");
       console.log("  locationId:", locationId);
-      console.log("  contactId:", contactId);
       console.log("  contactName:", contactName);
+      console.log("  contactEmail:", contactEmail);
+      console.log("  contactPhone:", contactPhone);
       console.log("  message:", message);
 
-      if (!locationId || !contactId) {
-        console.error("[WorkflowAction] Missing locationId or contactId");
+      if (!locationId) {
         return res.status(400).json({
           success: false,
-          message: "Missing locationId or contactId. Full payload logged on backend.",
-          receivedPayload: {
-            topKeys: Object.keys(body),
-            locationId,
-            contactId,
-            dataKeys: body.data ? Object.keys(body.data) : null,
-          },
+          message: "Missing locationId.",
+          receivedQuery: req.query,
         });
       }
 
-      // 2. Automatically get the base image from the database
-      console.log("[WorkflowAction] Fetching base image from stored_files...");
-      const query = "SELECT data, content_type FROM stored_files ORDER BY created_at DESC LIMIT 1";
-      const dbResult = await pool.query(query);
+      // 3. Build search strategy: use email/phone first (exact), then name
+      console.log("[WorkflowAction] Looking up contact...");
 
-      if (dbResult.rows.length === 0) {
-        console.error("[WorkflowAction] No image found in stored_files");
+      let contactId: string | undefined;
+      let matchedContactName: string = "";
+
+      // Priority 1: Search by email (most unique)
+      if (contactEmail) {
+        console.log("[WorkflowAction] Searching by email:", contactEmail);
+        const emailResult = await searchContacts(locationId, {
+          query: contactEmail,
+          pageLimit: 5,
+        });
+        const exactEmailMatch = emailResult.contacts.find(
+          (c) => c.email.toLowerCase() === contactEmail.toLowerCase()
+        );
+        if (exactEmailMatch) {
+          contactId = exactEmailMatch.id;
+          matchedContactName = exactEmailMatch.name;
+        }
+      }
+
+      // Priority 2: Search by phone (second most unique)
+      if (!contactId && contactPhone) {
+        console.log("[WorkflowAction] Searching by phone:", contactPhone);
+        const phoneResult = await searchContacts(locationId, {
+          query: contactPhone,
+          pageLimit: 5,
+        });
+        const exactPhoneMatch = phoneResult.contacts.find(
+          (c) => {
+            const cleanPhone = (c.phone || "").replace(/[^0-9]/g, "");
+            const cleanInput = contactPhone.replace(/[^0-9]/g, "");
+            return cleanPhone === cleanInput;
+          }
+        );
+        if (exactPhoneMatch) {
+          contactId = exactPhoneMatch.id;
+          matchedContactName = exactPhoneMatch.name;
+        }
+      }
+
+      // Priority 3: Search by name (fallback, least unique)
+      if (!contactId && contactName) {
+        console.log("[WorkflowAction] Searching by name:", contactName);
+        const nameResult = await searchContacts(locationId, {
+          query: contactName,
+          pageLimit: 5,
+        });
+        const exactNameMatch = nameResult.contacts.find(
+          (c) => c.name.toLowerCase() === contactName.toLowerCase()
+        );
+        if (exactNameMatch) {
+          contactId = exactNameMatch.id;
+          matchedContactName = exactNameMatch.name;
+        } else if (nameResult.contacts.length > 0) {
+          // Partial match fallback
+          contactId = nameResult.contacts[0].id;
+          matchedContactName = nameResult.contacts[0].name;
+        }
+      }
+
+      if (!contactId) {
         return res.status(404).json({
           success: false,
-          message: "No base image found in the database. Please upload an image in the app first.",
+          message: `No contact found with name="${contactName}", email="${contactEmail}", phone="${contactPhone}".`,
         });
       }
 
-      console.log("[WorkflowAction] Base image found. Content-Type:", dbResult.rows[0].content_type);
+      console.log("[WorkflowAction] Found contactId:", contactId, "| Name:", matchedContactName);
+
+      // 4. Fetch base image from stored_files
+      console.log("[WorkflowAction] Fetching base image from stored_files...");
+      const dbQuery = "SELECT data, content_type FROM stored_files ORDER BY created_at DESC LIMIT 1";
+      const dbResult = await pool.query(dbQuery);
+
+      if (dbResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No base image found in the database.",
+        });
+      }
+
+      console.log("[WorkflowAction] Base image found.");
       const baseImageBase64 = dbResult.rows[0].data;
       const baseImageBuffer = Buffer.from(baseImageBase64, "base64");
 
-      // 3. Generate the personalized image
-      console.log("[WorkflowAction] Compositing name:", contactName);
-      const personalizedImageBuffer = await compositeName(baseImageBuffer, contactName, {
+      // 5. Generate the personalized image using the matched contact name
+      console.log("[WorkflowAction] Compositing name:", matchedContactName);
+      const personalizedImageBuffer = await compositeName(baseImageBuffer, matchedContactName, {
         fontSize: 72,
         fontColor: "#111111",
         fontWeight: "bold",
@@ -164,15 +149,14 @@ export function registerWorkflowActionRoutes(app: Express): void {
         bgOpacity: 1,
         padding: 20,
       });
-      console.log("[WorkflowAction] Personalized image buffer size:", personalizedImageBuffer.length, "bytes");
+      console.log("[WorkflowAction] Personalized image size:", personalizedImageBuffer.length, "bytes");
 
-      // 4. Upload the personalized image to storage
+      // 6. Upload the personalized image
       const uploadKey = `personalized/${contactId}-${Date.now()}.jpg`;
-      console.log("[WorkflowAction] Uploading to storage with key:", uploadKey);
       const uploadResult = await storagePut(uploadKey, personalizedImageBuffer, "image/jpeg");
       console.log("[WorkflowAction] Upload result:", JSON.stringify(uploadResult));
 
-      // Construct the absolute URL for GHL
+      // Build absolute URL
       let finalImageUrl = uploadResult.url;
       if (finalImageUrl.startsWith("/")) {
         const backendUrl = (process.env.BACKEND_URL || "").replace(/\/+$/, "");
@@ -180,8 +164,8 @@ export function registerWorkflowActionRoutes(app: Express): void {
       }
       console.log("[WorkflowAction] Final image URL:", finalImageUrl);
 
-      // 5. Send the SMS using the GHL Conversations API
-      console.log("[WorkflowAction] Sending SMS via GHL API...");
+      // 7. Send SMS via GHL Conversations API
+      console.log("[WorkflowAction] Sending SMS...");
       const accessToken = await getValidAccessToken(locationId);
       const ghlBody: Record<string, unknown> = {
         type: "SMS",
@@ -201,7 +185,7 @@ export function registerWorkflowActionRoutes(app: Express): void {
             Authorization: `Bearer ${accessToken}`,
             Version: "2021-04-15",
           },
-          body: JSON.stringify(ghlBody),
+          body: JSON.stringify(ghlBody ),
         }
       );
 
@@ -213,7 +197,8 @@ export function registerWorkflowActionRoutes(app: Express): void {
       console.log("[WorkflowAction] SMS sent successfully!");
       return res.json({
         success: true,
-        message: "Personalized SMS sent successfully via backend workflow action.",
+        message: "Personalized SMS sent successfully.",
+        contactId,
       });
     } catch (error) {
       console.error("[WorkflowAction] Fatal Error:", error);
