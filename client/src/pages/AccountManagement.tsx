@@ -5,7 +5,6 @@ import { trpc } from '@/lib/trpc';
 import { TopNavBar } from '@/components/account/TopNavBar';
 import { ManageUsersTab } from '@/components/account/ManageUsersTab';
 import { AddUserTab } from '@/components/account/AddUserTab';
-import { CloseAccountTab } from '@/components/account/CloseAccountTab';
 import { LoadingSpinner } from '@/components/account/AccountSharedUI';
 
 export default function AccountManagement() {
@@ -92,7 +91,6 @@ export default function AccountManagement() {
         {activeTab === 'add-user' && (
           <AddUserTab locationId={locationId} onSuccess={() => setActiveTab('manage-users')} />
         )}
-        {activeTab === 'close-account' && <CloseAccountTab locationId={locationId} />}
       </main>
     </div>
   );
