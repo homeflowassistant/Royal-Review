@@ -115,35 +115,7 @@ router.get('/auth/location-token', async (req: Request, res: Response) => {
  * GET /api/account/transactions?locationId=...&limit=...&offset=...
  * Proxy payment transactions through the backend using the stored location token.
  */
-router.get('/account/transactions', async (req: Request, res: Response) => {
-  try {
-    const { locationId, limit, offset } = req.query;
 
-    if (!locationId || typeof locationId !== 'string') {
-      return res.status(400).json({ error: 'locationId query parameter is required' });
-    }
-
-    const accessToken = await getLocationAccessToken(locationId);
-
-    const result = await ghlRequest({
-      method: 'GET',
-      path: '/payments/transactions/',
-      token: accessToken,
-      params: {
-        locationId,
-        limit: typeof limit === 'string' ? limit : undefined,
-        offset: typeof offset === 'string' ? offset : undefined,
-      },
-    });
-
-    res.json(result);
-  } catch (error: any) {
-    console.error('Transactions proxy error:', error.message);
-    res.status(error.response?.status || 500).json({
-      error: error.message || 'Failed to fetch transactions',
-    });
-  }
-});
 
 /**
  * GET /api/account/users?locationId=...
@@ -392,28 +364,7 @@ router.get('/saas/plan', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/saas/plans
- * List available plans (Agency Private Token)
- */
-router.get('/saas/plans', async (req: Request, res: Response) => {
-  try {
-    const agencyPrivateToken = await getValidAgencyToken();
 
-    const result = await ghlRequest({
-      method: 'GET',
-      path: '/saas-api/public-api/plans',
-      token: agencyPrivateToken,
-    });
-
-    res.json(result);
-  } catch (error: any) {
-    console.error('Plans fetch error:', error.message);
-    res.status(error.response?.status || 500).json({
-      error: error.message || 'Failed to fetch plans',
-    });
-  }
-});
 
 /**
  * POST /api/verify-location
@@ -450,43 +401,7 @@ router.post('/verify-location', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * PUT /api/saas/update-subscription
- * Update plan or Stripe details (Agency OAuth Token via proxy)
- */
-router.put('/saas/update-subscription', async (req: Request, res: Response) => {
-  try {
-    const { locationId, planId, customerId, subscriptionId } = req.body;
 
-    if (!locationId) {
-      return res.status(400).json({ error: 'locationId is required' });
-    }
-
-    const companyId = await resolveCompanyId(locationId);
-
-    const agencyPrivateToken = await getValidAgencyToken();
-
-    const result = await ghlRequest({
-      method: 'PUT',
-      path: `/update-saas-subscription/${locationId}`,
-      token: agencyPrivateToken,
-      data: {
-        customerId,
-        subscriptionId,
-        planId,
-        locationId,
-        companyId,
-      },
-    });
-
-    res.json(result);
-  } catch (error: any) {
-    console.error('Update subscription error:', error.message);
-    res.status(error.response?.status || 500).json({
-      error: error.message || 'Failed to update subscription',
-    });
-  }
-});
 
 /**
  * POST /api/saas/pause

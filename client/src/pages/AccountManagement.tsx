@@ -1,22 +1,20 @@
-import { useMemo, useState } from 'react';
-import { AlertCircle, Link2, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/lib/trpc';
 import { TopNavBar } from '@/components/account/TopNavBar';
-import { PaymentMethodTab } from '@/components/account/PaymentMethodTab';
-import { UpdatePaymentTab } from '@/components/account/UpdatePaymentTab';
 import { ManageUsersTab } from '@/components/account/ManageUsersTab';
 import { AddUserTab } from '@/components/account/AddUserTab';
 import { CloseAccountTab } from '@/components/account/CloseAccountTab';
 import { LoadingSpinner } from '@/components/account/AccountSharedUI';
 
 export default function AccountManagement() {
-  const [activeTab, setActiveTab] = useState('payment-method');
+  const [activeTab, setActiveTab] = useState('manage-users');
 
-  const locationId = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('locationId') || '';
-  }, []);
+  const locationId = (() => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('locationId') || '';
+   })();
 
   // Also verify connection via tRPC (same pattern as other pages)
   const connectionQuery = trpc.ghl.connectionStatus.useQuery(
@@ -87,11 +85,7 @@ export default function AccountManagement() {
     <div className="min-h-screen bg-gray-50">
       <TopNavBar activeTab={activeTab} onTabChange={setActiveTab} />
       
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {activeTab === 'payment-method' && (
-          <PaymentMethodTab locationId={locationId} onAddPaymentMethod={() => setActiveTab('update-payment')} />
-        )}
-        {activeTab === 'update-payment' && <UpdatePaymentTab locationId={locationId} />}
+      <main className="max-w-7xl mx-auto px-4 py-8">        
         {activeTab === 'manage-users' && (
           <ManageUsersTab locationId={locationId} onAddUserClick={() => setActiveTab('add-user')} />
         )}

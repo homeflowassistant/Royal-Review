@@ -1,16 +1,6 @@
-import { CreditCard, RefreshCw, Users, UserPlus, XCircle } from 'lucide-react';
+import { Users, UserPlus, XCircle } from 'lucide-react';
 
 export const ACCOUNT_TABS = [
-  {
-    id: 'payment-method',
-    label: 'Payment Method',
-    icon: CreditCard,
-  },
-  {
-    id: 'update-payment',
-    label: 'Update Payment',
-    icon: RefreshCw,
-  },
   {
     id: 'manage-users',
     label: 'Manage Users',
