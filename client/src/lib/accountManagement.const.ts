@@ -11,11 +11,6 @@ export const ACCOUNT_TABS = [
     label: 'Add User',
     icon: UserPlus,
   },
-  {
-    id: 'close-account',
-    label: 'Close Account',
-    icon: XCircle,
-  },
 ];
 
 export const ALL_PERMISSIONS = [
