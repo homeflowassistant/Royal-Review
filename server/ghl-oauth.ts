@@ -14,7 +14,8 @@ import {
   getInstallation,
   removeInstallation,
   upsertInstallation,
-  updateCustomValuesOnInstall, // <-- ADD THIS IMPORT
+  updateCustomValuesOnInstall,
+  getValidAccessToken, // <-- ADD THIS IMPORT
 } from "./ghl-service.js";
 
 
@@ -249,6 +250,7 @@ export function registerGHLOAuthRoutes(app: Express): void {
           locationId,
           hasAgencyToken: Boolean(agencyInstallation.accessToken),
         });
+        const freshAgencyToken = await getValidAccessToken(companyId);
         await processLocationInstall(agencyInstallation.accessToken, companyId, locationId);
         updateCustomValuesOnInstall(locationId).catch(console.error);
       } else if (payload.type === "UNINSTALL" && payload.locationId) {
